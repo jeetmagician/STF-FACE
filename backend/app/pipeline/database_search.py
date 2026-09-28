@@ -25,8 +25,10 @@ from __future__ import annotations
 
 import json
 import logging
+import secrets
 import threading
 import time
+from collections import deque
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
@@ -296,6 +298,7 @@ def run_database_search(
     face_index: int | None = None,
     top_n: int | None = None,
     refresh_index: bool = False,
+    auto_select_face: bool = False,
 ) -> dict:
     if not settings.enable_database_search:
         raise DatabaseSearchDisabledError(
@@ -326,7 +329,7 @@ def run_database_search(
             search_embedder.info.backend,
         )
 
-    if len(faces) > 1:
+    if len(faces) > 1 and not auto_select_face:
         if face_index is None:
             thumbnails = [
                 {
@@ -349,6 +352,10 @@ def run_database_search(
             )
         face = faces[face_index]
     else:
+        # `detect()` returns faces sorted by bounding-box area, largest first
+        # (see FaceEmbedder.detect), so this is "the most prominent face" -
+        # the only sane default for a headless capture device with no way to
+        # ask a person which face they meant.
         face = faces[0]
 
     query_embedding = search_embedder.embed(face.aligned)
@@ -505,3 +512,99 @@ def run_database_compare(
         new_face_indices=None,
         include_visualisations=include_visualisations,
     )
+
+
+# --------------------------------------------------------- capture log ---
+# A small in-memory log of unattended device captures (e.g. a button-press
+# camera), so a "live" view can show what was just searched without the
+# device needing any display of its own. Deliberately minimal: it stores the
+# already-rendered query thumbnail and the top match, not the raw uploaded
+# photo, and nothing here is written to disk or survives a restart - the
+# same "photographs never persist" policy as the rest of this service, just
+# extended to also cover its own bookkeeping.
+
+CAPTURE_LOG_MAX_ENTRIES = 50
+
+
+@dataclass
+class CaptureLogEntry:
+    id: str
+    device_id: str | None
+    captured_at: float
+    query_preview: str
+    indexed_photo_count: int
+    match_count: int
+    top_match: dict | None
+    warnings: list[str]
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "device_id": self.device_id,
+            "captured_at": self.captured_at,
+            "query_preview": self.query_preview,
+            "indexed_photo_count": self.indexed_photo_count,
+            "match_count": self.match_count,
+            "top_match": self.top_match,
+            "warnings": self.warnings,
+        }
+
+
+_capture_log: deque[CaptureLogEntry] = deque(maxlen=CAPTURE_LOG_MAX_ENTRIES)
+_capture_log_lock = threading.Lock()
+
+
+def record_capture(device_id: str | None, result: dict) -> CaptureLogEntry:
+    entry = CaptureLogEntry(
+        id=secrets.token_hex(8),
+        device_id=device_id,
+        captured_at=time.time(),
+        query_preview=result["query_preview"],
+        indexed_photo_count=result["indexed_photo_count"],
+        match_count=len(result["matches"]),
+        top_match=result["matches"][0] if result["matches"] else None,
+        warnings=result["warnings"],
+    )
+    with _capture_log_lock:
+        _capture_log.appendleft(entry)
+    return entry
+
+
+def recent_captures(limit: int = 10) -> list[dict]:
+    with _capture_log_lock:
+        entries = list(_capture_log)[: max(1, min(limit, CAPTURE_LOG_MAX_ENTRIES))]
+    return [e.to_dict() for e in entries]
+
+
+def clear_captures() -> None:
+    """Drop the capture log. Used by tests."""
+    with _capture_log_lock:
+        _capture_log.clear()
+
+
+def run_device_capture_search(
+    image_bytes: bytes,
+    settings: Settings,
+    embedder: FaceEmbedder,
+    profile: CalibrationProfile,
+    device_id: str | None = None,
+    top_n: int | None = None,
+) -> dict:
+    """Search a photo from an unattended capture device and log the result.
+
+    Always auto-selects the most prominent face rather than asking the
+    device to disambiguate - there is no one there to ask. Intended for a
+    manually-triggered capture (a button press), not continuous/unattended
+    polling: see docs/ETHICS.md before wiring this to a motion sensor or a
+    timer instead of a person's deliberate action.
+    """
+    result = run_database_search(
+        image_bytes=image_bytes,
+        settings=settings,
+        embedder=embedder,
+        profile=profile,
+        top_n=top_n,
+        auto_select_face=True,
+    )
+    record_capture(device_id, result)
+    return result

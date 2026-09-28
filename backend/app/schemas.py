@@ -216,6 +216,17 @@ class DatabaseSearchStatus(BaseModel):
     built_at: float | None
 
 
+class CaptureLogEntryInfo(BaseModel):
+    id: str
+    device_id: str | None
+    captured_at: float
+    query_preview: str
+    indexed_photo_count: int
+    match_count: int
+    top_match: DatabaseMatchInfo | None
+    warnings: list[str]
+
+
 class HealthResponse(BaseModel):
     status: str
     version: str

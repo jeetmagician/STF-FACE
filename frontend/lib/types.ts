@@ -211,6 +211,17 @@ export interface DatabaseSearchStatus {
   built_at: number | null;
 }
 
+export interface CaptureLogEntry {
+  id: string;
+  device_id: string | null;
+  captured_at: number;
+  query_preview: string;
+  indexed_photo_count: number;
+  match_count: number;
+  top_match: DatabaseMatchInfo | null;
+  warnings: string[];
+}
+
 export interface ApiErrorPayload {
   error: string;
   detail: string;

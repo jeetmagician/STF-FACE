@@ -309,13 +309,29 @@ photo and that one indexed photo, and the interface offers an "Export as
 PDF" on that detail view (the browser's own print-to-PDF; nothing is
 generated or sent anywhere else).
 
+### Capture devices
+
+`POST /api/database-search/device-capture` is a headless variant for a
+capture device with no UI to disambiguate faces or export anything itself -
+it always uses the most prominent detected face, and logs the result to a
+small in-memory capture log (`GET /api/database-search/captures`) that the
+interface's **Live capture** page (`/live`) polls and displays. The original
+photo is never kept - only a rendered thumbnail and the search result.
+
+A reference implementation for an AI-Thinker ESP32-CAM, triggered by a
+physical button press, lives in [firmware/esp32-cam/](firmware/esp32-cam/).
+See its README for wiring, board setup, and the networking changes needed
+(binding the backend to `0.0.0.0` instead of `127.0.0.1` so a device on your
+LAN can reach it). Deliberately manual-trigger only - see
+[docs/ETHICS.md](docs/ETHICS.md) before wiring a different trigger.
+
 ---
 
 ## Testing
 
 ```bash
 cd backend
-python scripts/selfcheck.py     # 52 checks, no weights or pytest needed
+python scripts/selfcheck.py     # 56 checks, no weights or pytest needed
 pytest -v                       # full suite
 ```
 
@@ -345,6 +361,8 @@ never claims a cause.
 | `GET /api/database-search/status` | Whether database search is on, and the current index size |
 | `POST /api/database-search` | Search one photo against the local database folder (off by default) |
 | `POST /api/database-search/compare` | Full pairwise detail behind one search result - the same pipeline as `/api/analyze` |
+| `POST /api/database-search/device-capture` | Headless search for a capture device - auto-selects the face, logs the result |
+| `GET /api/database-search/captures` | Recent device captures, for the Live capture page to poll |
 
 `POST /api/analyze` takes `old_photos[]` and `new_photos[]` (1–5 each), with
 optional `old_face_indices` / `new_face_indices` JSON arrays.
@@ -410,10 +428,13 @@ facet/
 │   │                              fit_calibration, evaluate
 │   └── tests/
 ├── frontend/
-│   ├── app/                       landing, compare, search, privacy, methodology
+│   ├── app/                       landing, compare, search, live, privacy,
+│   │                              methodology
 │   ├── components/                Dropzone, ScoreDial, ResultPanel,
 │   │                              RegionTable, QualityPanel
 │   └── lib/                       api client, types
+├── firmware/
+│   └── esp32-cam/                 reference capture device firmware
 └── docs/                          ARCHITECTURE, CALIBRATION, ETHICS,
                                    DEPLOYMENT
 ```

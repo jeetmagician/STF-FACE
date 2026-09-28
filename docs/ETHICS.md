@@ -23,6 +23,18 @@ as its boundary made explicit:
   relatives can score highly here exactly as they can in a pairwise
   comparison.
 
+A capture device (e.g. the ESP32-CAM in `firmware/esp32-cam/`) can trigger
+this search without a browser in the loop. The same scope applies, plus one
+more constraint specific to unattended hardware:
+
+- **A deliberate, per-capture human action, not continuous or scheduled
+  capture.** The reference firmware fires once per physical button press.
+  Wiring the trigger to a motion sensor, a timer, or anything else that
+  captures without a person choosing to *that time* turns an on-demand
+  lookup into unattended surveillance of whoever passes by - the exact
+  capability this project does not build. If you modify the firmware, keep
+  the trigger manual.
+
 ## What it deliberately is not
 
 **No identification against public, shared or third-party data.** Database

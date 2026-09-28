@@ -14,13 +14,18 @@ from app.models.base import FaceEmbedder
 from app.models.registry import get_load_error, is_loaded
 from app.pipeline import visualize
 from app.pipeline import database_search
-from app.pipeline.database_search import run_database_compare, run_database_search
+from app.pipeline.database_search import (
+    run_database_compare,
+    run_database_search,
+    run_device_capture_search,
+)
 from app.pipeline.detection import detect_with_fallback
 from app.pipeline.loader import decode_image
 from app.pipeline.orchestrator import analyse_pair_with_fallback
 from app.pipeline.quality import assess_quality
 from app.schemas import (
     AnalyzeResponse,
+    CaptureLogEntryInfo,
     DatabaseSearchResponse,
     DatabaseSearchStatus,
     DetectResponse,
@@ -271,6 +276,52 @@ async def database_search_compare(
         face_index=face_index,
         include_visualisations=include_visualisations,
     )
+
+
+@router.post(
+    "/database-search/device-capture",
+    response_model=DatabaseSearchResponse,
+    tags=["analysis"],
+)
+async def database_search_device_capture(
+    image: UploadFile = File(..., description="One frame from a capture device."),
+    device_id: str | None = Form(
+        None, description="Free-text label for the capturing device, e.g. its name."
+    ),
+    top_n: int | None = Form(None, description="How many ranked matches to return."),
+    settings: Settings = Depends(settings_dependency),
+    embedder: FaceEmbedder = Depends(embedder_dependency),
+    profile: CalibrationProfile = Depends(calibration_dependency),
+) -> dict:
+    """Search a single photo from an unattended capture device (e.g. a
+    button-triggered ESP32-CAM) and log the result for `/database-search/captures`.
+
+    Always uses the most prominent detected face - there is no person at the
+    device to disambiguate between several. Meant for a deliberate,
+    per-capture trigger (a button press), not a motion sensor or a timer:
+    see docs/ETHICS.md before wiring this to anything that captures without
+    a person choosing to, each time.
+    """
+    data = await image.read()
+    return run_device_capture_search(
+        image_bytes=data,
+        settings=settings,
+        embedder=embedder,
+        profile=profile,
+        device_id=device_id,
+        top_n=top_n,
+    )
+
+
+@router.get(
+    "/database-search/captures",
+    response_model=list[CaptureLogEntryInfo],
+    tags=["analysis"],
+)
+async def database_search_captures(limit: int = 10) -> list[dict]:
+    """The most recent device captures, newest first - for a "live" view to
+    poll so a headless capture device's result is visible somewhere."""
+    return database_search.recent_captures(limit)
 
 
 # --------------------------------------------------------------- analyze ---

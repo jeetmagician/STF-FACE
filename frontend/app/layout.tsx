@@ -72,6 +72,9 @@ function Header() {
             <Link href="/search" className="transition-colors hover:text-ink-100">
               Database search
             </Link>
+            <Link href="/live" className="transition-colors hover:text-ink-100">
+              Live capture
+            </Link>
           </nav>
           <span className="chip !text-scan-400 !border-scan-500/25">
             <span className="status-dot animate-blink" />

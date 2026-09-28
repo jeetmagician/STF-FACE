@@ -39,3 +39,6 @@ out/
 .env.local
 .DS_Store
 roc.png
+
+# ESP32-CAM WiFi credentials and server address - never committed.
+firmware/esp32-cam/secrets.h

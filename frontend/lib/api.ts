@@ -1,6 +1,7 @@
 import type {
   AnalyzeResponse,
   ApiErrorPayload,
+  CaptureLogEntry,
   DatabaseSearchResponse,
   DatabaseSearchStatus,
   DetectResponse,
@@ -127,6 +128,19 @@ export async function getDatabaseSearchStatus(): Promise<DatabaseSearchStatus> {
       cache: "no-store",
     });
     return await parse<DatabaseSearchStatus>(response);
+  } catch (error) {
+    return networkError(error);
+  }
+}
+
+/** Recent captures from an unattended device (e.g. a button-press camera). */
+export async function getRecentCaptures(limit = 10): Promise<CaptureLogEntry[]> {
+  try {
+    const response = await fetch(
+      `${API_URL}/api/database-search/captures?limit=${limit}`,
+      { headers: authHeaders(), cache: "no-store" },
+    );
+    return await parse<CaptureLogEntry[]>(response);
   } catch (error) {
     return networkError(error);
   }

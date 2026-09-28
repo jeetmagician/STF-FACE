@@ -50,8 +50,10 @@ from app.models.base import (  # noqa: E402
 from app.pipeline import database_search  # noqa: E402
 from app.pipeline.database_search import (  # noqa: E402
     build_index,
+    recent_captures,
     run_database_compare,
     run_database_search,
+    run_device_capture_search,
 )
 from app.pipeline.loader import decode_image  # noqa: E402
 from app.pipeline.orchestrator import analyse_pair, process_side  # noqa: E402
@@ -849,6 +851,36 @@ def t_db_compare_path_traversal():
         raise AssertionError("read a file outside the configured database folder")
 
 
+@check("Device capture auto-selects the most prominent face and logs the result")
+def t_db_device_capture():
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        (root / "alice.jpg").write_bytes(encode_jpeg(make_face(1)))
+        database_search.reset()
+        database_search.clear_captures()
+        settings = database_settings(root)
+
+        # Two faces in the query: a device has no one to ask which one was
+        # meant, so this must succeed by picking the largest rather than
+        # raising MultipleFacesError the way the interactive search does.
+        query = encode_jpeg(make_face(1, second_face=True))
+        result = run_device_capture_search(
+            image_bytes=query,
+            settings=settings,
+            embedder=EMBEDDER,
+            profile=default_profile("mock"),
+            device_id="esp32-front-door",
+        )
+        assert "matches" in result
+
+        logged = recent_captures(limit=5)
+        assert len(logged) == 1, f"expected 1 logged capture, got {len(logged)}"
+        assert logged[0]["device_id"] == "esp32-front-door"
+        assert logged[0]["query_preview"].startswith("data:image/")
+        database_search.reset()
+        database_search.clear_captures()
+
+
 def main() -> int:
     global VERBOSE
     parser = argparse.ArgumentParser(description=__doc__)
@@ -888,6 +920,7 @@ def main() -> int:
             t_db_search_disabled, t_db_index_build, t_db_index_incremental,
             t_db_search_ranks_match, t_db_search_multi_face, t_db_search_no_face,
             t_db_search_query_fallback, t_db_compare_detail, t_db_compare_path_traversal,
+            t_db_device_capture,
         ],
     }
 
