@@ -107,11 +107,34 @@ async def face_detect(
 
     Used by the interface to show a live "usable face detected" state before the
     user commits to a full analysis. Computes no embeddings.
+
+    If the primary backend finds no face at all, retries once with the
+    fallback OpenCV backend before reporting failure - this mirrors
+    `analyse_pair_with_fallback`, so the live upload check and the full
+    analysis never disagree about whether a photo is usable.
     """
     data = await image.read()
     decoded = decode_image(data, settings, label="image")
 
     faces = embedder.detect(decoded, max_faces=settings.max_faces_returned)
+    detector_backend = embedder.info.backend
+
+    used_fallback = False
+    if not faces and settings.enable_detection_fallback and detector_backend != "opencv":
+        from app.models.registry import get_fallback_embedder
+
+        fallback_embedder = get_fallback_embedder(settings)
+        faces = fallback_embedder.detect(decoded, max_faces=settings.max_faces_returned)
+        if faces:
+            used_fallback = True
+            detector_backend = fallback_embedder.info.backend
+            logger.info(
+                "Primary backend (%s) detected no face; live check succeeded "
+                "with fallback %s backend.",
+                embedder.info.backend,
+                detector_backend,
+            )
+
     if not faces:
         raise NoFaceError(
             "No face was detected in this image. The face may be too small, too "
@@ -139,6 +162,15 @@ async def face_detect(
         warnings.append(
             f"{len(faces)} faces were detected. You will need to choose which one "
             "to compare."
+        )
+
+    if used_fallback:
+        warnings.insert(
+            0,
+            f"The primary model ({embedder.info.backend}) could not detect a face "
+            f"in this photograph. This preview used the fallback {detector_backend} "
+            "model instead, which is less accurate on large age gaps and "
+            "post-surgical pairs.",
         )
 
     preview = visualize.to_data_uri(visualize.annotate_detection(decoded, faces[0]))
