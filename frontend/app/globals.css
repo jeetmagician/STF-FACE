@@ -1,0 +1,82 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+}
+
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    @apply bg-ink-950 text-ink-200 antialiased;
+    background-image:
+      radial-gradient(
+        ellipse 80% 50% at 50% -10%,
+        rgba(195, 148, 64, 0.07),
+        transparent 60%
+      ),
+      radial-gradient(
+        ellipse 60% 40% at 90% 10%,
+        rgba(95, 168, 138, 0.04),
+        transparent 55%
+      );
+    background-attachment: fixed;
+  }
+
+  ::selection {
+    @apply bg-brass-500/30 text-ink-100;
+  }
+
+  :focus-visible {
+    @apply outline-none ring-2 ring-brass-500/70 ring-offset-2 ring-offset-ink-950;
+  }
+}
+
+@layer components {
+  .panel {
+    @apply rounded-xl border border-ink-800 bg-ink-900/70 backdrop-blur-sm;
+  }
+
+  .panel-inset {
+    @apply rounded-lg border border-ink-800 bg-ink-950/50;
+  }
+
+  .label-mono {
+    @apply font-mono text-[11px] uppercase tracking-[0.14em] text-ink-500;
+  }
+
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg
+           bg-brass-500 px-5 py-2.5 text-sm font-medium text-ink-950
+           transition-colors hover:bg-brass-400
+           disabled:cursor-not-allowed disabled:bg-ink-700 disabled:text-ink-500;
+  }
+
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg
+           border border-ink-700 px-5 py-2.5 text-sm font-medium text-ink-300
+           transition-colors hover:border-ink-600 hover:text-ink-100;
+  }
+
+  .prose-note {
+    @apply text-sm leading-relaxed text-ink-400;
+  }
+}
+
+/* The score dial sweeps in once so the number reads as a measurement being
+   taken, not a verdict being pronounced. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

@@ -1,0 +1,22 @@
+# Optional InsightFace backend (ArcFace w600k_r50 + SCRFD + 106 landmarks).
+#
+# LICENCE WARNING
+# ---------------
+# The insightface library is MIT. The pretrained model packs it downloads
+# (buffalo_l and friends) are released for NON-COMMERCIAL RESEARCH USE ONLY.
+# Commercial deployment requires a licence from InsightFace
+# (recognition-oss-pack@insightface.ai), or your own weights.
+#
+# Install with:  pip install -r requirements.txt -r requirements-insightface.txt
+# Then set:      MODEL_BACKEND=insightface
+#
+# insightface builds native extensions at install time and needs Cython and a
+# C++ toolchain present first.
+
+Cython==3.0.11
+insightface==0.7.3
+onnxruntime==1.20.1
+
+# For GPU, replace onnxruntime above with:
+#   onnxruntime-gpu==1.20.1
+# and set USE_GPU=true. See docker/Dockerfile.gpu.

@@ -1,0 +1,60 @@
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      args:
+        # Set true to include the InsightFace backend. Its pretrained weights
+        # are licensed for NON-COMMERCIAL RESEARCH USE ONLY.
+        INSTALL_INSIGHTFACE: "false"
+    image: facet-backend:latest
+    environment:
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      MODEL_BACKEND: ${MODEL_BACKEND:-opencv}
+      USE_GPU: "false"
+      API_KEY: ${API_KEY:-}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
+      PRIOR_SAME_PERSON: ${PRIOR_SAME_PERSON:-0.5}
+      CALIBRATION_PROFILE: ${CALIBRATION_PROFILE:-default}
+      RETAIN_FOR_FACE_SELECTION: ${RETAIN_FOR_FACE_SELECTION:-true}
+      SESSION_TTL_SECONDS: ${SESSION_TTL_SECONDS:-300}
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    volumes:
+      # Persist downloaded weights and fitted calibration across rebuilds.
+      - model-cache:/app/assets/models
+      - ./backend/assets/calibration:/app/assets/calibration
+    # Uploaded images are held only in memory, so the filesystem can be
+    # read-only apart from the temp mount the runtime needs.
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+    image: facet-frontend:latest
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+    depends_on:
+      backend:
+        condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+
+volumes:
+  model-cache:

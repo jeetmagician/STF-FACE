@@ -1,0 +1,48 @@
+# CUDA image for the InsightFace backend with GPU inference.
+#
+# LICENCE: InsightFace pretrained weights are non-commercial research use only.
+# Build this image only if that fits your use, or after obtaining a licence.
+#
+#   docker build -f Dockerfile.gpu -t facet-backend:gpu .
+#   docker run --gpus all -e USE_GPU=true -e MODEL_BACKEND=insightface ...
+FROM nvidia/cuda:12.4.1-cudnn-runtime-ubuntu22.04
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1 \
+    DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        python3.11 python3-pip python3.11-dev \
+        build-essential libgl1 libglib2.0-0 curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && ln -sf /usr/bin/python3.11 /usr/bin/python
+
+WORKDIR /app
+
+COPY requirements.txt requirements-insightface.txt ./
+RUN pip install --break-system-packages -r requirements.txt && \
+    pip install --break-system-packages -r requirements-insightface.txt && \
+    pip uninstall -y --break-system-packages onnxruntime && \
+    pip install --break-system-packages onnxruntime-gpu==1.20.1
+
+COPY app ./app
+COPY scripts ./scripts
+COPY tests ./tests
+
+RUN mkdir -p assets/models assets/calibration && \
+    python scripts/download_models.py || \
+    echo "WARNING: model download failed at build time."
+
+RUN useradd --create-home --shell /usr/sbin/nologin facet && \
+    chown -R facet:facet /app
+USER facet
+
+ENV USE_GPU=true \
+    MODEL_BACKEND=insightface
+
+EXPOSE 8000
+HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
+    CMD curl -fsS http://localhost:8000/api/health || exit 1
+
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

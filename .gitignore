@@ -1,0 +1,37 @@
+# Model weights: large, and in InsightFace's case not redistributable.
+backend/assets/models/*.onnx
+backend/assets/models/buffalo_*/
+backend/assets/models/antelope*/
+
+# Fitted calibration may encode information about your validation set.
+backend/assets/calibration/*.json
+!backend/assets/calibration/.gitkeep
+
+# Never commit photographs.
+*.jpg
+*.jpeg
+*.png
+*.webp
+*.bmp
+*.tiff
+!frontend/public/*.png
+data/
+pairs*.csv
+
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+
+node_modules/
+.next/
+out/
+*.tsbuildinfo
+
+.env
+.env.local
+.DS_Store
+roc.png
