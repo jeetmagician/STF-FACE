@@ -18,14 +18,17 @@
     background-image:
       radial-gradient(
         ellipse 80% 50% at 50% -10%,
-        rgba(195, 148, 64, 0.07),
+        rgba(195, 148, 64, 0.06),
         transparent 60%
       ),
       radial-gradient(
         ellipse 60% 40% at 90% 10%,
-        rgba(95, 168, 138, 0.04),
+        rgba(63, 184, 207, 0.035),
         transparent 55%
-      );
+      ),
+      linear-gradient(to right, rgba(139, 139, 156, 0.05) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(139, 139, 156, 0.05) 1px, transparent 1px);
+    background-size: auto, auto, 32px 32px, 32px 32px;
     background-attachment: fixed;
   }
 
@@ -40,7 +43,7 @@
 
 @layer components {
   .panel {
-    @apply rounded-xl border border-ink-800 bg-ink-900/70 backdrop-blur-sm;
+    @apply relative rounded-xl border border-ink-800 bg-ink-900/70 backdrop-blur-sm;
   }
 
   .panel-inset {
@@ -53,19 +56,59 @@
 
   .btn-primary {
     @apply inline-flex items-center justify-center gap-2 rounded-lg
-           bg-brass-500 px-5 py-2.5 text-sm font-medium text-ink-950
+           bg-brass-500 px-5 py-2.5 font-mono text-[13px] font-semibold uppercase
+           tracking-[0.06em] text-ink-950
            transition-colors hover:bg-brass-400
            disabled:cursor-not-allowed disabled:bg-ink-700 disabled:text-ink-500;
   }
 
   .btn-ghost {
     @apply inline-flex items-center justify-center gap-2 rounded-lg
-           border border-ink-700 px-5 py-2.5 text-sm font-medium text-ink-300
-           transition-colors hover:border-ink-600 hover:text-ink-100;
+           border border-ink-700 px-5 py-2.5 font-mono text-[13px] font-semibold
+           uppercase tracking-[0.06em] text-ink-300
+           transition-colors hover:border-scan-500/50 hover:text-ink-100;
   }
 
   .prose-note {
     @apply text-sm leading-relaxed text-ink-400;
+  }
+
+  /* A camera-viewfinder / targeting-reticle frame, for anything that is a
+     detected or measured subject (a photo thumbnail, an aligned face crop) -
+     never decorative on its own, so it never appears on plain content. */
+  .reticle {
+    @apply relative;
+  }
+  .reticle::before {
+    content: "";
+    position: absolute;
+    inset: 2px;
+    pointer-events: none;
+    border-radius: inherit;
+    background:
+      linear-gradient(to right, #3fb8cf 2px, transparent 2px) top left / 11px 11px no-repeat,
+      linear-gradient(to bottom, #3fb8cf 2px, transparent 2px) top left / 11px 11px no-repeat,
+      linear-gradient(to left, #3fb8cf 2px, transparent 2px) top right / 11px 11px no-repeat,
+      linear-gradient(to bottom, #3fb8cf 2px, transparent 2px) top right / 11px 11px no-repeat,
+      linear-gradient(to right, #3fb8cf 2px, transparent 2px) bottom left / 11px 11px no-repeat,
+      linear-gradient(to top, #3fb8cf 2px, transparent 2px) bottom left / 11px 11px no-repeat,
+      linear-gradient(to left, #3fb8cf 2px, transparent 2px) bottom right / 11px 11px no-repeat,
+      linear-gradient(to top, #3fb8cf 2px, transparent 2px) bottom right / 11px 11px no-repeat;
+    opacity: 0.85;
+  }
+
+  /* A small uppercase mono tag, for terse technical readouts (status,
+     backend name, evidence-style labels) rather than prose. */
+  .chip {
+    @apply inline-flex items-center gap-1.5 rounded border border-ink-700
+           bg-ink-950/60 px-2 py-0.5 font-mono text-[10px] uppercase
+           tracking-[0.1em] text-ink-400;
+  }
+
+  /* A live/active status dot - blinking is reserved for "system is working
+     right now", never decorative, so it doesn't compete with real alerts. */
+  .status-dot {
+    @apply h-1.5 w-1.5 rounded-full bg-scan-500;
   }
 }
 

@@ -31,7 +31,8 @@ export default function RegionTable({
 
   return (
     <div className="panel p-6">
-      <h3 className="text-sm font-medium text-ink-100">
+      <h3 className="flex items-center gap-2 font-mono text-xs font-semibold uppercase tracking-[0.1em] text-ink-200">
+        <span className="h-3 w-0.5 shrink-0 bg-scan-500" aria-hidden="true" />
         Which regions differ
       </h3>
       <p className="prose-note mt-2 text-xs">{analysis.interpretation}</p>

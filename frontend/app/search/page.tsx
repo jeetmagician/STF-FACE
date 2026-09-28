@@ -211,12 +211,14 @@ export default function SearchPage() {
         </div>
 
         <div className="no-print mb-6 flex items-center gap-4 panel p-4">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={activeMatch.thumbnail}
-            alt=""
-            className="h-14 w-14 shrink-0 rounded-md object-cover"
-          />
+          <div className="reticle relative h-14 w-14 shrink-0 overflow-hidden rounded-md">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={activeMatch.thumbnail}
+              alt=""
+              className="h-full w-full object-cover"
+            />
+          </div>
           <div className="min-w-0">
             <p className="truncate text-sm text-ink-200">{activeMatch.filename}</p>
             <p className="truncate text-[11px] text-ink-500">{activeMatch.path}</p>
@@ -249,7 +251,8 @@ export default function SearchPage() {
   if (stage === "result" && result) {
     return (
       <div className="mx-auto max-w-4xl px-6 py-12">
-        <h1 className="text-2xl font-semibold tracking-tight text-ink-100">
+        <p className="label-mono">Database search · Results</p>
+        <h1 className="mt-1 text-2xl font-semibold tracking-tight text-ink-100">
           Search results
         </h1>
         <p className="prose-note mt-2 max-w-2xl">
@@ -277,24 +280,32 @@ export default function SearchPage() {
                 <button
                   type="button"
                   onClick={() => openDetail(match)}
-                  className="panel flex w-full items-center gap-4 p-4 text-left transition-colors hover:border-ink-600"
+                  className="panel flex w-full items-center gap-4 p-4 text-left transition-colors hover:border-scan-500/40"
                 >
-                  <span className="font-mono text-xs text-ink-500">#{match.rank}</span>
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={match.thumbnail}
-                    alt=""
-                    className="h-16 w-16 shrink-0 rounded-md object-cover"
-                  />
+                  <span className="chip !px-1.5 tabular-nums">
+                    {String(match.rank).padStart(2, "0")}
+                  </span>
+                  <div className="reticle relative h-16 w-16 shrink-0 overflow-hidden rounded-md">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={match.thumbnail}
+                      alt=""
+                      className="h-full w-full object-cover"
+                    />
+                  </div>
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm text-ink-200">{match.filename}</p>
-                    <p className="truncate text-[11px] text-ink-500">{match.path}</p>
+                    <p className="truncate font-mono text-[11px] text-ink-500">
+                      {match.path}
+                    </p>
                   </div>
                   <div className="shrink-0 text-right">
                     <p className={`font-mono text-lg ${confidenceTone(match.confidence_key)}`}>
                       {match.similarity_score.toFixed(1)}
                     </p>
-                    <p className="text-[11px] text-ink-500">{match.confidence_level}</p>
+                    <p className="font-mono text-[10px] uppercase tracking-wide text-ink-500">
+                      {match.confidence_level}
+                    </p>
                   </div>
                 </button>
               </li>
@@ -313,7 +324,8 @@ export default function SearchPage() {
 
   return (
     <div className="mx-auto max-w-4xl px-6 py-12">
-      <h1 className="text-2xl font-semibold tracking-tight text-ink-100">
+      <p className="label-mono">Module 02 · 1:N lookup</p>
+      <h1 className="mt-1 text-2xl font-semibold tracking-tight text-ink-100">
         Search profile from database
       </h1>
       <p className="prose-note mt-2 max-w-2xl">

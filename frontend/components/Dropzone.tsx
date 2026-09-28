@@ -45,7 +45,7 @@ function PhotoCard({
   return (
     <li className="panel-inset overflow-hidden">
       <div className="flex gap-3 p-3">
-        <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-md bg-ink-900">
+        <div className="reticle relative h-20 w-20 shrink-0 overflow-hidden rounded-md bg-ink-900">
           {/* Local blob preview: never uploaded anywhere to be displayed. */}
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
@@ -55,7 +55,7 @@ function PhotoCard({
           />
           {photo.detecting && (
             <div className="absolute inset-0 overflow-hidden bg-ink-950/60">
-              <div className="h-full w-full animate-sweep bg-gradient-to-r from-transparent via-brass-500/25 to-transparent" />
+              <div className="h-full w-full animate-sweep bg-gradient-to-r from-transparent via-scan-500/25 to-transparent" />
             </div>
           )}
         </div>

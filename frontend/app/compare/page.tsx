@@ -172,7 +172,8 @@ export default function ComparePage() {
 
   return (
     <div className="mx-auto max-w-4xl px-6 py-12">
-      <h1 className="text-2xl font-semibold tracking-tight text-ink-100">
+      <p className="label-mono">Module 01 · 1:1 verification</p>
+      <h1 className="mt-1 text-2xl font-semibold tracking-tight text-ink-100">
         Compare photographs
       </h1>
       <p className="prose-note mt-2 max-w-2xl">

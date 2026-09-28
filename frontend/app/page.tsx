@@ -61,7 +61,8 @@ export default function LandingPage() {
 
       {/* The limits come before the features, deliberately. */}
       <section className="panel animate-fade-up p-7" style={{ animationDelay: "240ms" }}>
-        <h2 className="text-sm font-medium text-ink-100">
+        <h2 className="flex items-center gap-2 font-mono text-xs font-semibold uppercase tracking-[0.1em] text-ink-200">
+          <span className="h-3 w-0.5 shrink-0 bg-scan-500" aria-hidden="true" />
           What this tool does not do
         </h2>
         <div className="mt-5 grid gap-6 sm:grid-cols-3">
@@ -104,7 +105,10 @@ export default function LandingPage() {
       </section>
 
       <section className="mt-16">
-        <h2 className="text-sm font-medium text-ink-100">The pipeline</h2>
+        <h2 className="flex items-center gap-2 font-mono text-xs font-semibold uppercase tracking-[0.1em] text-ink-200">
+          <span className="h-3 w-0.5 shrink-0 bg-scan-500" aria-hidden="true" />
+          The pipeline
+        </h2>
         <p className="prose-note mt-2 max-w-2xl">
           Comparison runs on face embeddings, not pixel differences. Every stage
           can reject the input rather than pass a degraded signal downstream.
@@ -131,7 +135,8 @@ export default function LandingPage() {
 
       <section className="mt-16 grid gap-6 lg:grid-cols-2">
         <div className="panel p-7">
-          <h2 className="text-sm font-medium text-ink-100">
+          <h2 className="flex items-center gap-2 font-mono text-xs font-semibold uppercase tracking-[0.1em] text-ink-200">
+            <span className="h-3 w-0.5 shrink-0 bg-scan-500" aria-hidden="true" />
             Built for faces that have changed
           </h2>
           <p className="prose-note mt-3">
@@ -150,7 +155,8 @@ export default function LandingPage() {
         </div>
 
         <div className="panel p-7">
-          <h2 className="text-sm font-medium text-ink-100">
+          <h2 className="flex items-center gap-2 font-mono text-xs font-semibold uppercase tracking-[0.1em] text-ink-200">
+            <span className="h-3 w-0.5 shrink-0 bg-scan-500" aria-hidden="true" />
             Your photographs stay yours
           </h2>
           <p className="prose-note mt-3">
@@ -178,7 +184,8 @@ export default function LandingPage() {
       </section>
 
       <section className="mt-16 rounded-xl border border-brass-600/25 bg-brass-600/[0.06] p-7">
-        <h2 className="text-sm font-medium text-brass-300">
+        <h2 className="flex items-center gap-2 font-mono text-xs font-semibold uppercase tracking-[0.1em] text-brass-300">
+          <span className="h-3 w-0.5 shrink-0 bg-brass-500" aria-hidden="true" />
           Before you rely on a number
         </h2>
         <p className="mt-3 max-w-3xl text-sm leading-relaxed text-ink-300">

@@ -13,8 +13,11 @@ export const metadata: Metadata = {
 
 function Header() {
   return (
-    <header className="no-print border-b border-ink-800/80">
-      <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-5">
+    <header className="no-print sticky top-0 z-20 border-b border-ink-800 bg-ink-950/85 backdrop-blur-md">
+      {/* A thin top rule in the instrument accent, not the brand colour -
+          reads as chrome, not as a callout. */}
+      <div className="h-px bg-gradient-to-r from-transparent via-scan-500/40 to-transparent" />
+      <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
         <Link href="/" className="group flex items-center gap-3">
           <svg
             viewBox="0 0 32 32"
@@ -45,25 +48,36 @@ function Header() {
               strokeLinecap="round"
             />
           </svg>
-          <span className="text-base font-medium tracking-tight text-ink-100">
-            Facet
+          <span className="flex items-baseline gap-2">
+            <span className="text-base font-medium tracking-tight text-ink-100">
+              Facet
+            </span>
+            <span className="label-mono hidden sm:inline">
+              Facial similarity console
+            </span>
           </span>
         </Link>
 
-        <nav className="flex items-center gap-6 text-sm text-ink-400">
-          <Link href="/methodology" className="transition-colors hover:text-ink-100">
-            Methodology
-          </Link>
-          <Link href="/privacy" className="transition-colors hover:text-ink-100">
-            Privacy
-          </Link>
-          <Link href="/compare" className="transition-colors hover:text-ink-100">
-            Compare
-          </Link>
-          <Link href="/search" className="transition-colors hover:text-ink-100">
-            Database search
-          </Link>
-        </nav>
+        <div className="flex items-center gap-7">
+          <nav className="flex items-center gap-6 font-mono text-[11px] uppercase tracking-[0.1em] text-ink-400">
+            <Link href="/methodology" className="transition-colors hover:text-ink-100">
+              Methodology
+            </Link>
+            <Link href="/privacy" className="transition-colors hover:text-ink-100">
+              Privacy
+            </Link>
+            <Link href="/compare" className="transition-colors hover:text-ink-100">
+              Compare
+            </Link>
+            <Link href="/search" className="transition-colors hover:text-ink-100">
+              Database search
+            </Link>
+          </nav>
+          <span className="chip !text-scan-400 !border-scan-500/25">
+            <span className="status-dot animate-blink" />
+            Local
+          </span>
+        </div>
       </div>
     </header>
   );
@@ -73,6 +87,7 @@ function Footer() {
   return (
     <footer className="no-print mt-24 border-t border-ink-800/80">
       <div className="mx-auto max-w-6xl px-6 py-10">
+        <p className="label-mono mb-2">Notice</p>
         <p className="max-w-3xl text-xs leading-relaxed text-ink-500">
           Facet reports facial similarity as measured by a face-recognition
           model under a stated calibration. It does not determine identity, and

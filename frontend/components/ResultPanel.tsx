@@ -11,6 +11,15 @@ const SEVERITY_TONE: Record<string, string> = {
   inherent: "border-ink-700 bg-ink-800/30 text-ink-400",
 };
 
+function SectionHeading({ children }: { children: React.ReactNode }) {
+  return (
+    <h3 className="flex items-center gap-2 font-mono text-xs font-semibold uppercase tracking-[0.1em] text-ink-200">
+      <span className="h-3 w-0.5 shrink-0 bg-scan-500" aria-hidden="true" />
+      {children}
+    </h3>
+  );
+}
+
 function Figure({
   src,
   caption,
@@ -22,12 +31,14 @@ function Figure({
 }) {
   return (
     <figure>
-      <div className="overflow-hidden rounded-lg border border-ink-800 bg-ink-950">
+      <div className="reticle overflow-hidden rounded-lg border border-ink-800 bg-ink-950">
         {/* Base64 data URI returned inline by the API — not a hosted image. */}
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={src} alt={alt} className="w-full object-contain" />
       </div>
-      <figcaption className="mt-2 text-[11px] text-ink-500">{caption}</figcaption>
+      <figcaption className="mt-2 font-mono text-[11px] text-ink-500">
+        {caption}
+      </figcaption>
     </figure>
   );
 }
@@ -49,6 +60,19 @@ export default function ResultPanel({
 
   return (
     <div className="space-y-6">
+      {/* Report header: a technical strip, not prose - this is the readout a
+          forensic tool leads with before its verdict-shaped headline. */}
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="chip">
+          <span className="status-dot" />
+          {result.model.recognizer}
+        </span>
+        <span className="chip">{result.model.detector}</span>
+        <span className={`chip ${calibration.is_validated ? "!text-signal-high !border-signal-high/25" : "!text-brass-400 !border-brass-600/25"}`}>
+          {calibration.is_validated ? `Calibrated · ${calibration.profile}` : "Uncalibrated"}
+        </span>
+      </div>
+
       {/* Headline */}
       <section className="panel animate-fade-up p-8">
         <div className="grid gap-8 lg:grid-cols-[auto,1fr] lg:items-center">
@@ -85,7 +109,8 @@ export default function ResultPanel({
           className="animate-fade-up rounded-xl border border-brass-600/25 bg-brass-600/[0.06] p-6"
           style={{ animationDelay: "60ms" }}
         >
-          <h3 className="text-sm font-medium text-brass-300">
+          <h3 className="flex items-center gap-2 font-mono text-xs font-semibold uppercase tracking-[0.1em] text-brass-300">
+            <span className="h-3 w-0.5 shrink-0 bg-brass-500" aria-hidden="true" />
             Factors affecting this result
           </h3>
           <ul className="mt-3 space-y-2">
@@ -108,7 +133,7 @@ export default function ResultPanel({
           className="panel animate-fade-up p-6"
           style={{ animationDelay: "90ms" }}
         >
-          <h3 className="text-sm font-medium text-ink-100">Visual comparison</h3>
+          <SectionHeading>Visual comparison</SectionHeading>
 
           <div className="mt-5 grid gap-5 sm:grid-cols-2">
             <div>
@@ -162,7 +187,7 @@ export default function ResultPanel({
         className="panel animate-fade-up p-6"
         style={{ animationDelay: "120ms" }}
       >
-        <h3 className="text-sm font-medium text-ink-100">Assessment</h3>
+        <SectionHeading>Assessment</SectionHeading>
         <p className="mt-3 text-sm leading-relaxed text-ink-300">
           {result.analysis}
         </p>
@@ -177,9 +202,7 @@ export default function ResultPanel({
         className="panel animate-fade-up p-6"
         style={{ animationDelay: "180ms" }}
       >
-        <h3 className="text-sm font-medium text-ink-100">
-          Score derivation
-        </h3>
+        <SectionHeading>Score derivation</SectionHeading>
 
         <div className="mt-5 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
           {[
@@ -297,9 +320,7 @@ export default function ResultPanel({
         className="panel animate-fade-up p-6"
         style={{ animationDelay: "210ms" }}
       >
-        <h3 className="text-sm font-medium text-ink-100">
-          Sources of uncertainty
-        </h3>
+        <SectionHeading>Sources of uncertainty</SectionHeading>
         <div className="mt-4 space-y-3">
           {result.uncertainty_sources.map((source) => (
             <div

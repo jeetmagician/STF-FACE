@@ -11,7 +11,10 @@ function Section({
 }) {
   return (
     <section className="border-t border-ink-800 py-7 first:border-t-0 first:pt-0">
-      <h2 className="text-sm font-medium text-ink-100">{title}</h2>
+      <h2 className="flex items-center gap-2 font-mono text-xs font-semibold uppercase tracking-[0.1em] text-ink-200">
+        <span className="h-3 w-0.5 shrink-0 bg-scan-500" aria-hidden="true" />
+        {title}
+      </h2>
       <div className="mt-3 space-y-3 text-sm leading-relaxed text-ink-400">
         {children}
       </div>
@@ -30,7 +33,8 @@ function Formula({ children }: { children: React.ReactNode }) {
 export default function MethodologyPage() {
   return (
     <div className="mx-auto max-w-3xl px-6 py-12">
-      <h1 className="text-2xl font-semibold tracking-tight text-ink-100">
+      <p className="label-mono">Reference · Methodology</p>
+      <h1 className="mt-1 text-2xl font-semibold tracking-tight text-ink-100">
         How the score is produced
       </h1>
       <p className="mt-3 text-sm leading-relaxed text-ink-400">
