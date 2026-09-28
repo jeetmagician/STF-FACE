@@ -67,6 +67,12 @@ cost.
 - [ ] **Replace the rate limiter** (see below).
 - [ ] **Review proxy logs** — make sure your reverse proxy is not logging more
       than you intend.
+- [ ] **Leave `ENABLE_DATABASE_SEARCH` off unless you specifically want
+      one-to-many search running in this deployment.** If it is on, `API_KEY`
+      is not optional — anyone who can reach the API can search
+      `DATABASE_SEARCH_DIR` and read back thumbnails of everything in it. See
+      [docs/ETHICS.md](ETHICS.md) before enabling it anywhere but a machine
+      you personally control.
 
 ### Should do
 
@@ -163,6 +169,14 @@ workers you also need sticky sessions, because the ephemeral store is
 per-process and a face-selection resume routed to a different worker will 404.
 Either enable session affinity or set the flag to `false`.
 
+The database-search index and the device-capture log are likewise
+per-process, in-memory state. With multiple workers and no sticky routing,
+each worker builds and searches its own copy of the index (harmless, just
+redundant work) but the `/live` capture feed will only show captures that
+happened to land on the worker a given poll hits - with `ENABLE_DATABASE_SEARCH`
+on and more than one worker, either use session affinity or accept that
+`/live` is single-worker-only.
+
 Indicative CPU latency per comparison:
 
 | Backend | 1 photo/side | 3 photos/side |
@@ -171,6 +185,20 @@ Indicative CPU latency per comparison:
 | insightface | ~0.9 s | ~2.4 s |
 
 Measure on your own hardware; these are order-of-magnitude figures.
+
+---
+
+## Capture devices on a LAN
+
+`uvicorn app.main:app --reload --port 8000` (the local-development command
+above) binds to `127.0.0.1` by default — reachable only from the same
+machine. A capture device like the reference ESP32-CAM
+(`firmware/esp32-cam/`) is a separate device on the network, so it needs
+`--host 0.0.0.0` instead, plus a firewall rule allowing the port, and the
+device on the same subnet. See `firmware/esp32-cam/README.md` for the full
+walkthrough. This is a LAN-development convenience, not a production
+deployment topic — for anything reachable beyond your own network, the
+checklist above (`API_KEY`, TLS, `CORS_ORIGINS`) applies in full.
 
 ---
 
@@ -241,6 +269,12 @@ There is nothing to back up except:
 - `backend/assets/calibration/*.json` — your fitted calibration. Losing this
   means refitting, which means re-running your validation set.
 - `backend/assets/models/model_hashes.json` — your pinned weight hashes.
+
+`backend/assets/database_index/` (if database search is enabled) is a cache,
+not data — it is rebuilt automatically from `DATABASE_SEARCH_DIR` on next
+use, and deleting it just means the next search re-embeds everything once.
+Back up `DATABASE_SEARCH_DIR` itself the way you would any other photo
+library; it is not something this application manages.
 
 No photographs are stored, so there is no image backup, and no image restore
 that could resurrect data a user expected to be gone.

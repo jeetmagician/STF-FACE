@@ -206,6 +206,17 @@ instead — that is the number that does not depend on this choice.
 
 ---
 
+## Database search uses the same calibration
+
+A database-search match score goes through the identical
+`calibrated_score` / `band_for` path as a Compare-page result, using
+whichever backend actually ran that search (see
+[ARCHITECTURE.md](ARCHITECTURE.md#database-search) for when that is the
+fallback rather than the primary backend). There is no separate calibration
+for ranked search results: if your calibration is unvalidated, every score
+on the search results list is exactly as unvalidated as a Compare result,
+and the interface says so in both places.
+
 ## Recalibrating
 
 Refit when:

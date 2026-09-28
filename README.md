@@ -232,15 +232,14 @@ stated.
 Two config flags (`backend/app/config.py`), both on by default:
 
 - **`ENABLE_DETECTION_FALLBACK`** — if the primary backend finds *zero* faces
-  in a pair comparison, `analyse_pair_with_fallback` retries the whole
-  comparison with the OpenCV/YuNet backend before giving up. Both images in a
-  pair are always embedded by the same backend, so a fallback restarts the
-  full comparison rather than mixing models. It only triggers on a genuine
-  detection failure — quality gates and multi-face disambiguation are
-  untouched. Only wired into `POST /api/analyze` and `/api/analyze/resume`;
-  the live per-photo check at `POST /api/face-detect` does not use it yet, so
-  an upload can still be flagged "no face detected" there even for a pair
-  that would have succeeded via fallback at analysis time.
+  in an image, the OpenCV/YuNet backend is retried before giving up. For pair
+  comparison (`analyse_pair_with_fallback`) the *whole* comparison restarts
+  under the fallback, since both images in a pair are always embedded by the
+  same backend — mixing models would make the cosine similarity meaningless.
+  The live per-photo check (`POST /api/face-detect`) and database search
+  (below) use the same shared helper (`pipeline/detection.py`), so a photo
+  that only the fallback can detect a face in behaves consistently everywhere
+  it's used, not just at final analysis time.
 - **`STRICT_QUALITY_GATING`** — when set to `false`, quality gates (blur,
   pose, lighting, etc.) that would otherwise block a comparison are
   downgraded to warnings instead, and the pipeline scores the pair anyway.
@@ -277,11 +276,13 @@ It is scoped deliberately narrow:
 - Never exposes an indexed file by path or URL. Matches come back as a
   server-rendered thumbnail plus the file path as text, the same policy every
   other image in this service follows.
-- Uses, and only ever searches with, the active `MODEL_BACKEND` — never the
-  detection fallback. Mixing embeddings from two different networks would
-  make every similarity score in the results meaningless, so a photo (query
-  or library) that only the fallback backend can find a face in is skipped
-  rather than mixed into the index.
+- Keeps two independent indices, one per backend, and never mixes them
+  within a single search. Library photos are indexed with whichever backend
+  the index belongs to; if the primary backend can't find a face in the
+  *query* photo but the fallback can, the entire search — query embedding,
+  index, and calibration profile — moves to the fallback's own index, never
+  a mix of the two. Mixing embeddings from two different networks would make
+  every similarity score in the results meaningless.
 
 The index is built on first use and cached under
 `backend/assets/database_index/` (gitignored — it holds embeddings and file
@@ -400,9 +401,14 @@ session token rather than a silent pick.
 - Optional `X-API-Key` auth, per-endpoint rate limiting, security headers,
   non-root containers, read-only root filesystem.
 
-There is **no 1:N identification**. No database of faces, no search. That is
-the capability that turns face comparison into surveillance, and it is
-deliberately absent.
+There is no 1:N identification **against data you do not already control**.
+The only one-to-many capability is [database search](#database-search-one-to-many-off-by-default) —
+off by default, and scoped to a single folder the operator names explicitly
+on their own machine. There is no crawling, no external or shared data
+source, and no way to point it elsewhere at request time. That broader
+capability — matching a face against data you do not already control — is
+what turns face comparison into surveillance, and its absence here is a
+design decision. See [docs/ETHICS.md](docs/ETHICS.md).
 
 No sensitive characteristic is inferred — not race, ethnicity, religion,
 health, sexuality, character or criminality.
@@ -453,10 +459,14 @@ facet/
 - **Twins and siblings.** Unresolvable by any model here.
 - **The rate limiter is in-process.** Fine for one instance, wrong behind a
   load balancer — see [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
-- **Database search only ranks by the active backend's embedding.** A library
-  photo the active backend cannot find a face in is silently excluded from
-  results, not retried with the fallback — see
+- **Database search still can't find a face nothing can find a face in.** A
+  library photo neither backend detects a face in is silently excluded from
+  every search, regardless of the detection fallback — see
   [Database search](#database-search-one-to-many-off-by-default).
+- **Per-process state.** The database-search index and the device-capture log
+  both live in memory, one copy per worker process — see
+  [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md#scaling) before running more than
+  one worker with either feature on.
 
 ---
 

@@ -71,6 +71,14 @@ export default function PrivacyPage() {
             </code>
             .
           </p>
+          <p>
+            A second, similarly narrow exception applies only if database
+            search is enabled: a capture from an unattended device (e.g. the
+            reference ESP32-CAM) is logged so the Live capture page can show
+            it. Only a small rendered thumbnail and the search result are
+            kept - never the original photo - capped at the 50 most recent
+            captures, held in memory only, and cleared on restart.
+          </p>
         </Section>
 
         <Section title="How long anything is retained">

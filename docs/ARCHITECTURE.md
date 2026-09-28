@@ -37,6 +37,17 @@ The quality gate sits **before** embedding on purpose. Once a number exists it
 will be read as authoritative regardless of what produced it, so inputs that
 cannot support a defensible comparison are refused rather than scored.
 
+Two settings change what happens at the edges of this flow without changing
+the flow itself: `STRICT_QUALITY_GATING=false` downgrades the quality gate's
+refusals to warnings (detection failure is unaffected - there is still no
+embedding without a face), and `ENABLE_DETECTION_FALLBACK=true` (the
+default) retries the whole comparison with the OpenCV backend if the primary
+backend detects zero faces - `analyse_pair_with_fallback` in
+`pipeline/orchestrator.py`. A fallback always restarts the *entire*
+comparison under the fallback backend, never just the failing image, because
+mixing embeddings from two different networks would make the cosine
+similarity meaningless.
+
 ---
 
 ## Why these models
@@ -243,6 +254,21 @@ The narrative never asserts a cause. "The nasal region differs" is supportable;
 "the subject has had rhinoplasty" is not. A test asserts that the narrative
 contains none of "has had", "underwent", "surgery was", "definitely", "proves".
 
+### Hairstyle heuristic
+
+`detect_hairstyle_influence` (`pipeline/regions.py`) compares colour shift in
+the forehead/hairline band of the aligned crop against the core-face band.
+Deliberately colour-sensitive, unlike the gradient descriptor above, which is
+built to ignore colour precisely so lighting differences don't read as
+morphological change - a pure hair-colour change is invisible to gradient
+orientation, so it needs its own signal. Flags `hairstyle_likely` when the
+hairline shift both clears a noise floor and is at least 3x the core-face
+shift, a ratio chosen because whole-face lighting drift moves both bands
+together (ratio ~2x on real test pairs) while a hair-only change moves only
+one (ratio >400x on a synthetic hair repaint). Descriptive only, exactly like
+the rest of region analysis - it is surfaced in the narrative and
+`uncertainty_sources`, never folded into the score.
+
 ---
 
 ## Quality gating
@@ -265,6 +291,49 @@ warn. Every threshold is in `config.py` and env-overridable.
 Occlusion detection is explicitly heuristic — it misfires on heavy shadow,
 dark-framed glasses and facial hair — so it is reported as "suspected" and
 never silently alters the score.
+
+---
+
+## Database search
+
+One-to-many search (`pipeline/database_search.py`) is a separate module from
+the one-to-one pipeline above, not a variant of it - see
+[docs/ETHICS.md](ETHICS.md) for why the capability exists at all and how it
+is scoped.
+
+**Index**: one `DatabaseIndex` per backend, kept in memory
+(`_indices: dict[str, DatabaseIndex]`) and mirrored to
+`assets/database_index/index_<backend>.json`. Built incrementally - each
+file is keyed by `(path, size, mtime)`, so an unchanged photo is never
+re-embedded. A photo neither backend can find a face in is skipped and
+counted, not retried on every build.
+
+**Two indices, never mixed**: a library photo is embedded with whichever
+backend its own index belongs to, and a search only ever compares within one
+backend's space. When the primary backend cannot detect a face in the
+*query* photo, `detect_with_fallback` (`pipeline/detection.py` - the same
+helper `/api/face-detect` uses) retries with the fallback backend, and if
+that succeeds, the entire search - query embedding, index, and calibration
+profile - switches to the fallback's own index rather than searching the
+primary's index with a fallback-space vector.
+
+**Match detail**: `run_database_compare` re-runs `analyse_pair_with_fallback`
+between the query photo and one indexed photo. A search result is not a
+different kind of evidence from a Compare-page result, so it gets the same
+pipeline, region analysis and disclaimers - not a bespoke "why this matched"
+explanation invented for this feature. The `path` a client sends back is
+resolved and checked against `DATABASE_SEARCH_DIR` before ever being read
+(`Path.is_relative_to`), since it is client-supplied and reused across
+requests.
+
+**Device capture**: `run_device_capture_search` is the same search with no
+one available to disambiguate multiple faces, so it always takes the most
+prominent one (`detect()` already returns faces largest-first). Results are
+appended to an in-memory ring buffer (`record_capture`, 50 entries) holding
+only the rendered query thumbnail and the result - never the original
+photo - for `/live` to poll. Both the index and the capture log are
+per-process state: see the multi-worker note in
+[DEPLOYMENT.md](DEPLOYMENT.md#scaling).
 
 ---
 
@@ -302,6 +371,9 @@ the frontend branches on type rather than string-matching prose.
 | Missing key | 401 | `unauthorised` |
 | Expired session | 404 | `session_expired` |
 | Model unavailable | 503 | `model_unavailable` |
+| Database search off | 403 | `database_search_disabled` |
+| Database search misconfigured | 503 | `database_search_misconfigured` |
+| Database photo missing/outside folder | 404 | `database_photo_not_found` |
 
 Unexpected exceptions are logged in full and returned as a generic 500 —
 internal exception text leaks paths and library versions.
@@ -322,3 +394,8 @@ appearance comparison and the heatmap pick it up automatically.
 
 **Persistent storage**: currently none, and adding it means revisiting every
 claim on the privacy page.
+
+**New capture device**: implement the multipart POST to
+`/api/database-search/device-capture` (see `firmware/esp32-cam/` for a
+reference) - the endpoint takes a bare image plus an optional `device_id`,
+with no other protocol to implement.
