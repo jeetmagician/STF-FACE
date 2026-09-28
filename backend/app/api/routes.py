@@ -14,7 +14,7 @@ from app.models.base import FaceEmbedder
 from app.models.registry import get_load_error, is_loaded
 from app.pipeline import visualize
 from app.pipeline.loader import decode_image
-from app.pipeline.orchestrator import analyse_pair
+from app.pipeline.orchestrator import analyse_pair_with_fallback
 from app.pipeline.quality import assess_quality
 from app.schemas import AnalyzeResponse, DetectResponse, HealthResponse
 from app.scoring.calibration import CalibrationProfile, load_profile
@@ -236,7 +236,7 @@ async def analyze(
     token = store.put(old_images, new_images) if settings.retain_for_face_selection else ""
 
     try:
-        result = analyse_pair(
+        result = analyse_pair_with_fallback(
             old_images=old_images,
             new_images=new_images,
             embedder=embedder,
@@ -287,7 +287,7 @@ async def analyze_resume(
         new_face_indices, len(entry.new_images), "new_face_indices"
     )
 
-    result = analyse_pair(
+    result = analyse_pair_with_fallback(
         old_images=entry.old_images,
         new_images=entry.new_images,
         embedder=embedder,

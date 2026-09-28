@@ -115,6 +115,7 @@ class RegionAnalysis:
     geometry_caveat: str
     landmark_density: int
     narrative: str
+    hairstyle_likely: bool = False
 
     def to_dict(self) -> dict:
         return {
@@ -124,6 +125,7 @@ class RegionAnalysis:
             "geometry_caveat": self.geometry_caveat,
             "landmark_density": self.landmark_density,
             "narrative": self.narrative,
+            "hairstyle_likely": self.hairstyle_likely,
             "interpretation": (
                 "Region analysis is descriptive only. It indicates which areas of "
                 "the face differ between the two photographs; it is not evidence "
@@ -367,6 +369,7 @@ def build_narrative(
     measures: list[GeometricMeasure],
     global_similarity_band: str,
     geometry_reliable: bool,
+    hairstyle_likely: bool = False,
 ) -> str:
     """Compose the human-readable morphological summary.
 
@@ -397,6 +400,15 @@ def build_narrative(
         parts.append(
             "No facial region shows a large appearance difference between the two "
             "photographs."
+        )
+
+    if hairstyle_likely:
+        parts.append(
+            "The forehead region accounts for much of that difference while the "
+            "periocular region stays stable, a pattern typical of a hairstyle or "
+            "hair colour change rather than a change in the face itself. The "
+            "aligned comparison region includes a thin strip of forehead/hairline, "
+            "so this can have a small effect on the global similarity score."
         )
 
     if stable:
@@ -451,6 +463,57 @@ def build_narrative(
     return " ".join(parts)
 
 
+HAIRLINE_BAND = (0, 46)   # rows just above eye level (~51.6) - forehead + hairline
+CORE_BAND = (52, 104)     # eye level down to chin - jaw, cheeks, mouth, nose
+
+MIN_HAIRLINE_SHIFT = 0.15   # below this, treat as noise regardless of ratio
+HAIRLINE_TO_CORE_RATIO = 3.0
+
+
+def _band_color_shift(
+    old_aligned: np.ndarray, new_aligned: np.ndarray, band: tuple[int, int]
+) -> float:
+    """Mean colour shift (0..~1.7) over a horizontal band of the aligned crop.
+
+    Deliberately colour-sensitive, unlike `gradient_descriptor` above, which
+    is built to *ignore* colour/lighting. Gradient-orientation similarity
+    cannot see a pure hair-colour change.
+    """
+    y1, y2 = band
+    old_band = old_aligned[y1:y2, :, :].astype(np.float32) / 255.0
+    new_band = new_aligned[y1:y2, :, :].astype(np.float32) / 255.0
+    old_mean = old_band.reshape(-1, 3).mean(axis=0)
+    new_mean = new_band.reshape(-1, 3).mean(axis=0)
+    return float(np.linalg.norm(old_mean - new_mean))
+
+
+def detect_hairstyle_influence(old_aligned: np.ndarray, new_aligned: np.ndarray) -> bool:
+    """Heuristic: the hairline band's colour shifted much more than the core
+    face band did - consistent with a hairstyle or hair-colour change rather
+    than the whole photograph's lighting or white balance shifting together.
+
+    A single colour-shift threshold on the hairline band alone is not enough:
+    measured directly, two genuinely different real photos of the same person
+    showed a hairline shift of 0.24 against a *core-face* shift of 0.14 (ratio
+    1.8x) - that is ordinary day-to-day lighting variance touching the whole
+    face, not a hairstyle change. A synthetic hair-only repaint of one test
+    photo showed a hairline shift of 0.42 against a core-face shift of 0.001
+    (ratio 425x) - unambiguously localised to the hair. The ratio, not the raw
+    shift, is what separates the two cases.
+
+    This does not alter the similarity score. The aligned 112x112 crop used
+    for the global embedding includes a thin strip of forehead/hairline (it
+    is fixed by the pretrained model's template), so a drastic hair change can
+    have a small, real effect on the raw score - measured separately at a 1.00
+    (identical) to 0.82 (hair repainted) cosine drop.
+    """
+    hairline_shift = _band_color_shift(old_aligned, new_aligned, HAIRLINE_BAND)
+    if hairline_shift < MIN_HAIRLINE_SHIFT:
+        return False
+    core_shift = _band_color_shift(old_aligned, new_aligned, CORE_BAND)
+    return hairline_shift >= HAIRLINE_TO_CORE_RATIO * (core_shift + 1e-6)
+
+
 def analyse_regions(
     old_face: DetectedFace,
     new_face: DetectedFace,
@@ -480,8 +543,10 @@ def analyse_regions(
         int(old_face.landmarks.shape[0]) if old_face.landmarks is not None else 0
     )
 
+    hairstyle_likely = detect_hairstyle_influence(old_face.aligned, new_face.aligned)
+
     narrative = build_narrative(
-        regions, measures, global_similarity_band, geometry_reliable
+        regions, measures, global_similarity_band, geometry_reliable, hairstyle_likely
     )
 
     return RegionAnalysis(
@@ -491,4 +556,5 @@ def analyse_regions(
         geometry_caveat=caveat,
         landmark_density=landmark_density,
         narrative=narrative,
+        hairstyle_likely=hairstyle_likely,
     )

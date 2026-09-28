@@ -227,6 +227,38 @@ stated.
 
 ---
 
+## Detection fallback and quality gating
+
+Two config flags (`backend/app/config.py`), both on by default:
+
+- **`ENABLE_DETECTION_FALLBACK`** — if the primary backend finds *zero* faces
+  in a pair comparison, `analyse_pair_with_fallback` retries the whole
+  comparison with the OpenCV/YuNet backend before giving up. Both images in a
+  pair are always embedded by the same backend, so a fallback restarts the
+  full comparison rather than mixing models. It only triggers on a genuine
+  detection failure — quality gates and multi-face disambiguation are
+  untouched. Only wired into `POST /api/analyze` and `/api/analyze/resume`;
+  the live per-photo check at `POST /api/face-detect` does not use it yet, so
+  an upload can still be flagged "no face detected" there even for a pair
+  that would have succeeded via fallback at analysis time.
+- **`STRICT_QUALITY_GATING`** — when set to `false`, quality gates (blur,
+  pose, lighting, etc.) that would otherwise block a comparison are
+  downgraded to warnings instead, and the pipeline scores the pair anyway.
+  Face detection itself is unaffected: with no face there is no embedding, so
+  `NoFaceError` and multi-face responses still apply regardless of this flag.
+
+Region analysis also now flags a likely **hairstyle or hair-colour change**:
+`detect_hairstyle_influence` (`backend/app/pipeline/regions.py`) compares the
+colour shift in the forehead/hairline band against the core-face band, and
+flags it when the hairline shift is both above a noise floor and at least 3x
+the core-face shift. This is descriptive only — it never changes the
+similarity score — but the aligned 112x112 crop used for the global embedding
+does include a thin hairline strip, so a drastic hair change can have a small,
+real effect on the raw score. Surfaced as `region_analysis.hairstyle_likely`,
+a narrative note, and an entry in `uncertainty_sources`.
+
+---
+
 ## Testing
 
 ```bash

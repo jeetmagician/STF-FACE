@@ -124,6 +124,7 @@ class RegionAnalysisInfo(BaseModel):
     geometry_caveat: str
     landmark_density: int
     narrative: str
+    hairstyle_likely: bool
     interpretation: str
 
 

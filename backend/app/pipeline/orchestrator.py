@@ -115,14 +115,21 @@ def process_side(
         qualities.append(quality)
 
     if hard_failures:
-        raise QualityError(
-            "Insufficient image quality for reliable comparison.",
-            details={
-                "side": label,
-                "reasons": hard_failures,
-                "per_image": [q.to_dict() for q in qualities],
-            },
-        )
+        if settings.strict_quality_gating:
+            raise QualityError(
+                "Insufficient image quality for reliable comparison.",
+                details={
+                    "side": label,
+                    "reasons": hard_failures,
+                    "per_image": [q.to_dict() for q in qualities],
+                },
+            )
+        # Downgrade: score the pair anyway, but keep the reasons visible as
+        # warnings rather than silently dropping them.
+        for quality in qualities:
+            quality.warnings = quality.hard_failures + quality.warnings
+            quality.hard_failures = []
+            quality.usable = True
 
     aligned_batch = [face.aligned for face in faces]
     embeddings_array = embedder.embed_batch(aligned_batch)
@@ -147,6 +154,7 @@ def _collect_warnings(
     settings: Settings,
     profile: CalibrationProfile,
     pairwise,
+    hairstyle_likely: bool = False,
 ) -> list[str]:
     warnings: list[str] = []
 
@@ -184,6 +192,15 @@ def _collect_warnings(
             "facial hair."
         )
 
+    if hairstyle_likely:
+        warnings.append(
+            "A hairstyle or hair colour change looks like the main driver of the "
+            "forehead-region difference, while the periocular region stays "
+            "stable. The aligned comparison crop includes a thin strip of "
+            "hairline, so this can have a small effect on the similarity score - "
+            "smaller than typical day-to-day photo variation, but not zero."
+        )
+
     return warnings
 
 
@@ -219,7 +236,7 @@ def analyse_pair(
     new_face = new.representative_face
     pose_delta = pose_difference(old_face, new_face)
 
-    if pose_delta > settings.max_pose_difference_deg:
+    if pose_delta > settings.max_pose_difference_deg and settings.strict_quality_gating:
         raise QualityError(
             "Insufficient image quality for reliable comparison.",
             details={
@@ -237,7 +254,9 @@ def analyse_pair(
         old_face, new_face, band.label, pose_delta
     )
 
-    warnings = _collect_warnings(old, new, pose_delta, settings, profile, pairwise)
+    warnings = _collect_warnings(
+        old, new, pose_delta, settings, profile, pairwise, region_analysis.hairstyle_likely
+    )
 
     payload: dict = {
         "similarity_score": round(calibrated, 1),
@@ -308,7 +327,7 @@ def analyse_pair(
         },
         "region_analysis": region_analysis.to_dict(),
         "uncertainty_sources": _uncertainty_sources(
-            old, new, pose_delta, profile, pairwise
+            old, new, pose_delta, profile, pairwise, region_analysis.hairstyle_likely
         ),
     }
 
@@ -340,12 +359,100 @@ def analyse_pair(
     return payload
 
 
+def analyse_pair_with_fallback(
+    old_images: list[np.ndarray],
+    new_images: list[np.ndarray],
+    embedder: FaceEmbedder,
+    settings: Settings,
+    profile: CalibrationProfile,
+    old_face_indices: list[int] | None = None,
+    new_face_indices: list[int] | None = None,
+    session_token: str | None = None,
+    include_visualisations: bool = True,
+) -> dict:
+    """Run `analyse_pair`, retrying once with the OpenCV backend if the
+    primary backend detects zero faces.
+
+    Only triggers on a genuine detection failure (NoFaceError), never on
+    quality gates or multiple-face disambiguation - those outcomes are
+    meaningful regardless of backend and retrying would just be confusing.
+    Both images in a pair are always embedded by the *same* backend: mixing
+    embeddings from two different networks would make the cosine similarity
+    meaningless, so a fallback always restarts the whole comparison, never
+    just the image that failed.
+    """
+    try:
+        return analyse_pair(
+            old_images=old_images,
+            new_images=new_images,
+            embedder=embedder,
+            settings=settings,
+            profile=profile,
+            old_face_indices=old_face_indices,
+            new_face_indices=new_face_indices,
+            session_token=session_token,
+            include_visualisations=include_visualisations,
+        )
+    except NoFaceError as original_error:
+        if not settings.enable_detection_fallback or embedder.info.backend == "opencv":
+            raise
+
+        try:
+            from app.models.registry import get_fallback_embedder
+            from app.scoring.calibration import load_profile
+
+            logger.info(
+                "Primary backend (%s) detected no face; retrying with fallback "
+                "OpenCV backend.",
+                embedder.info.backend,
+            )
+            fallback_embedder = get_fallback_embedder(settings)
+            fallback_profile = load_profile(
+                settings.calibration_dir,
+                settings.calibration_profile,
+                fallback_embedder.info.backend,
+            )
+            result = analyse_pair(
+                old_images=old_images,
+                new_images=new_images,
+                embedder=fallback_embedder,
+                settings=settings,
+                profile=fallback_profile,
+                old_face_indices=old_face_indices,
+                new_face_indices=new_face_indices,
+                session_token=session_token,
+                include_visualisations=include_visualisations,
+            )
+        except NoFaceError:
+            # The fallback backend found nothing either: the original failure
+            # is the more informative one to surface.
+            raise original_error from None
+        except Exception as exc:
+            # Fallback unavailable for some other reason (missing weights,
+            # import error, ...). Do not let that mask the real answer with a
+            # confusing 500 - report the original detection failure instead.
+            logger.warning(
+                "Fallback backend unavailable (%s); returning original detection failure.",
+                exc,
+            )
+            raise original_error from None
+
+        result["warnings"] = [
+            f"The primary model ({embedder.info.backend}) could not detect a face "
+            "in one of these photographs. This comparison used the fallback "
+            f"{fallback_embedder.info.backend} model instead, which is less "
+            "accurate on large age gaps and post-surgical pairs."
+        ] + result["warnings"]
+        return result
+
+
 def _uncertainty_sources(
     old: SideResult,
     new: SideResult,
     pose_delta: float,
     profile: CalibrationProfile,
     pairwise,
+    hairstyle_likely: bool = False,
 ) -> list[dict[str, str]]:
     """The major things that could make this result wrong, ranked."""
     sources: list[dict[str, str]] = []
@@ -427,5 +534,20 @@ def _uncertainty_sources(
             ),
         }
     )
+
+    if hairstyle_likely:
+        sources.append(
+            {
+                "factor": "Hairstyle or hair colour change",
+                "severity": "low",
+                "detail": (
+                    "The forehead region differs substantially while the "
+                    "periocular region does not, a pattern typical of a hairstyle "
+                    "or colour change. The aligned comparison crop includes a thin "
+                    "strip of hairline, so this can slightly depress the "
+                    "similarity score even for the same person."
+                ),
+            }
+        )
 
     return sources

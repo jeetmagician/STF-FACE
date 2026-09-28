@@ -83,6 +83,20 @@ class Settings(BaseSettings):
     min_quality_score: float = 30.0      # hard gate on composite 0..100
     advisory_quality_score: float = 55.0
 
+    # If false, none of the quality gates above (or the pair-level pose gate)
+    # block a comparison - every reason they would have refused is downgraded
+    # to a warning instead, and the pipeline scores the pair regardless. Face
+    # detection still must succeed: there is no embedding to compare without a
+    # detected face, so NoFaceError and MultipleFacesError are unaffected.
+    strict_quality_gating: bool = True
+
+    # If the primary backend (MODEL_BACKEND) finds no face at all in an image,
+    # automatically retry the whole comparison with the OpenCV backend rather
+    # than failing outright. Only triggers on zero-face detection failures,
+    # never on quality gates or multi-face disambiguation. No effect when the
+    # primary backend already *is* opencv.
+    enable_detection_fallback: bool = True
+
     # Occlusion heuristics
     sunglasses_darkness_ratio: float = 0.55
     mask_texture_ratio: float = 0.42
