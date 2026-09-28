@@ -1,6 +1,8 @@
 import type {
   AnalyzeResponse,
   ApiErrorPayload,
+  DatabaseSearchResponse,
+  DatabaseSearchStatus,
   DetectResponse,
   HealthResponse,
 } from "./types";
@@ -113,6 +115,52 @@ export async function analyze(args: AnalyzeArgs): Promise<AnalyzeResponse> {
       headers: authHeaders(),
     });
     return await parse<AnalyzeResponse>(response);
+  } catch (error) {
+    return networkError(error);
+  }
+}
+
+export async function getDatabaseSearchStatus(): Promise<DatabaseSearchStatus> {
+  try {
+    const response = await fetch(`${API_URL}/api/database-search/status`, {
+      headers: authHeaders(),
+      cache: "no-store",
+    });
+    return await parse<DatabaseSearchStatus>(response);
+  } catch (error) {
+    return networkError(error);
+  }
+}
+
+export interface DatabaseSearchArgs {
+  file: File;
+  faceIndex?: number;
+  topN?: number;
+  refreshIndex?: boolean;
+}
+
+export async function searchDatabase(
+  args: DatabaseSearchArgs,
+): Promise<DatabaseSearchResponse> {
+  const form = new FormData();
+  form.append("image", args.file);
+  if (args.faceIndex !== undefined) {
+    form.append("face_index", String(args.faceIndex));
+  }
+  if (args.topN !== undefined) {
+    form.append("top_n", String(args.topN));
+  }
+  if (args.refreshIndex !== undefined) {
+    form.append("refresh_index", String(args.refreshIndex));
+  }
+
+  try {
+    const response = await fetch(`${API_URL}/api/database-search`, {
+      method: "POST",
+      body: form,
+      headers: authHeaders(),
+    });
+    return await parse<DatabaseSearchResponse>(response);
   } catch (error) {
     return networkError(error);
   }

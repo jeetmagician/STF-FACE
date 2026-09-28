@@ -122,11 +122,16 @@ export default function PrivacyPage() {
 
         <Section title="What this tool cannot be used for">
           <p>
-            Facet compares photographs you supply. It holds no database of
-            faces, performs no one-to-many search, and cannot be asked who
-            someone is. That is a design decision: one-to-many identification is
-            the capability that turns face comparison into surveillance, and it
-            is deliberately absent.
+            Facet primarily compares photographs you supply, one pair at a
+            time. It also has an optional, <strong>off-by-default</strong>{" "}
+            search of a single local folder the operator names explicitly —
+            e.g. searching your own photo library for the closest match to
+            one photo. There is no way to search anything else: no crawling,
+            no external or shared data source, no built-in way to point it at
+            a public dataset. That broader capability — identifying a face
+            against data you do not already control — is what turns face
+            comparison into surveillance, and its absence here is a design
+            decision, not an unfinished feature.
           </p>
           <p>
             No sensitive characteristic is inferred — not race, ethnicity,

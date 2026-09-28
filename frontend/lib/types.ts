@@ -92,6 +92,7 @@ export interface RegionAnalysisInfo {
   geometry_caveat: string;
   landmark_density: number;
   narrative: string;
+  hairstyle_likely: boolean;
   interpretation: string;
 }
 
@@ -177,6 +178,37 @@ export interface HealthResponse {
   calibration_profile: string;
   active_sessions: number;
   notes: string[];
+}
+
+export interface DatabaseMatchInfo {
+  rank: number;
+  path: string;
+  filename: string;
+  raw_similarity: number;
+  similarity_score: number;
+  confidence_level: string;
+  confidence_key: string;
+  thumbnail: string;
+}
+
+export interface DatabaseSearchResponse {
+  query_preview: string;
+  indexed_photo_count: number;
+  skipped_no_face: number;
+  skipped_error: number;
+  matches: DatabaseMatchInfo[];
+  warnings: string[];
+}
+
+export interface DatabaseSearchStatus {
+  enabled: boolean;
+  directory: string | null;
+  directory_exists: boolean;
+  indexed_photo_count: number | null;
+  skipped_no_face: number | null;
+  skipped_error: number | null;
+  backend: string | null;
+  built_at: number | null;
 }
 
 export interface ApiErrorPayload {

@@ -259,11 +259,55 @@ a narrative note, and an entry in `uncertainty_sources`.
 
 ---
 
+## Database search (one-to-many, off by default)
+
+Everything above is one-to-one comparison. There is also an optional search
+of one uploaded photo against a folder of photographs on your own machine —
+e.g. finding the closest match to a photo somewhere in your desktop photo
+library. **Read [docs/ETHICS.md](docs/ETHICS.md) before turning this on** —
+one-to-many search is a materially different capability from the rest of this
+service, and the rest of this document assumes you have.
+
+It is scoped deliberately narrow:
+
+- Off unless `ENABLE_DATABASE_SEARCH=true`.
+- Only ever reads the single folder named by `DATABASE_SEARCH_DIR`, on this
+  machine. No crawling, no external source, no way to point it elsewhere at
+  request time.
+- Never exposes an indexed file by path or URL. Matches come back as a
+  server-rendered thumbnail plus the file path as text, the same policy every
+  other image in this service follows.
+- Uses, and only ever searches with, the active `MODEL_BACKEND` — never the
+  detection fallback. Mixing embeddings from two different networks would
+  make every similarity score in the results meaningless, so a photo (query
+  or library) that only the fallback backend can find a face in is skipped
+  rather than mixed into the index.
+
+The index is built on first use and cached under
+`backend/assets/database_index/` (gitignored — it holds embeddings and file
+paths from your own photos), keyed by each file's path, size and modified
+time so unchanged photos are never re-embedded. Pass `refresh_index=true` on
+a search to rescan the folder for new or changed files first.
+
+```bash
+export ENABLE_DATABASE_SEARCH=true
+export DATABASE_SEARCH_DIR=/path/to/your/photos
+```
+
+Then, from the interface, use **Database search** in the nav, or directly:
+
+```bash
+curl -X POST http://localhost:8000/api/database-search \
+  -F "image=@query.jpg" -F "top_n=10"
+```
+
+---
+
 ## Testing
 
 ```bash
 cd backend
-python scripts/selfcheck.py     # 46 checks, no weights or pytest needed
+python scripts/selfcheck.py     # 52 checks, no weights or pytest needed
 pytest -v                       # full suite
 ```
 
@@ -290,6 +334,8 @@ never claims a cause.
 | `POST /api/analyze` | Compare two sets of photographs |
 | `POST /api/analyze/resume` | Continue after a face selection |
 | `DELETE /api/session/{token}` | Discard retained images immediately |
+| `GET /api/database-search/status` | Whether database search is on, and the current index size |
+| `POST /api/database-search` | Search one photo against the local database folder (off by default) |
 
 `POST /api/analyze` takes `old_photos[]` and `new_photos[]` (1–5 each), with
 optional `old_face_indices` / `new_face_indices` JSON arrays.
@@ -349,13 +395,13 @@ facet/
 │   │   ├── core/                  errors, security, ephemeral store
 │   │   ├── models/                backend interface + implementations
 │   │   ├── pipeline/              loader, quality, regions, similarity,
-│   │   │                          visualise, orchestrator
+│   │   │                          visualise, orchestrator, database_search
 │   │   └── scoring/               calibration, bands
 │   ├── scripts/                   download_models, selfcheck,
 │   │                              fit_calibration, evaluate
 │   └── tests/
 ├── frontend/
-│   ├── app/                       landing, compare, privacy, methodology
+│   ├── app/                       landing, compare, search, privacy, methodology
 │   ├── components/                Dropzone, ScoreDial, ResultPanel,
 │   │                              RegionTable, QualityPanel
 │   └── lib/                       api client, types
@@ -377,6 +423,10 @@ facet/
 - **Twins and siblings.** Unresolvable by any model here.
 - **The rate limiter is in-process.** Fine for one instance, wrong behind a
   load balancer — see [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
+- **Database search only ranks by the active backend's embedding.** A library
+  photo the active backend cannot find a face in is silently excluded from
+  results, not retried with the fallback — see
+  [Database search](#database-search-one-to-many-off-by-default).
 
 ---
 

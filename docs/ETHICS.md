@@ -2,14 +2,36 @@
 
 ## What this tool is
 
-A one-to-one face **verification** tool. It compares photographs you already
-have and reports how similar the faces are under a model.
+Primarily a one-to-one face **verification** tool. It compares photographs you
+already have and reports how similar the faces are under a model.
+
+It also has an optional, off-by-default **one-to-many search** of a single
+folder the operator names explicitly (`DATABASE_SEARCH_DIR`) - e.g. searching
+your own desktop photo library for the closest match to one photo. This is
+scoped deliberately narrow and is not an exception to the line below so much
+as its boundary made explicit:
+
+- **Off unless turned on.** `ENABLE_DATABASE_SEARCH=false` by default.
+- **One folder, named by the operator.** There is no way to search anything
+  else - no crawling, no external data source, no combining folders at
+  request time.
+- **Never exposed by URL.** Matches return as a server-rendered thumbnail and
+  a file path string, the same policy applied to every other image in this
+  service.
+- **Same evidentiary caveats as 1:1 comparison.** A match is a similarity
+  score against a local library, not identification - look-alikes and
+  relatives can score highly here exactly as they can in a pairwise
+  comparison.
 
 ## What it deliberately is not
 
-**No one-to-many identification.** No database of faces, no search, no "who is
-this person". That capability is what turns face comparison into surveillance,
-and its absence here is a design decision, not an unfinished feature.
+**No identification against public, shared or third-party data.** Database
+search only ever reads the single local folder configured above. There is no
+built-in way to point it at a shared drive, a scraped dataset, a public photo
+feed, or any data source beyond what the operator names on their own machine.
+That broader capability - matching a face against data you do not already
+control - is what turns face comparison into surveillance, and its absence
+here is a design decision, not an unfinished feature.
 
 **No attribute inference.** No estimation of race, ethnicity, religion, health,
 sexuality, character, emotion or criminality. These inferences are not
@@ -99,7 +121,11 @@ nominal.
 
 **This software gives you no legal basis you did not already have.**
 Establishing one is your responsibility. Consult a lawyer before deploying in a
-regulated context, and before processing anyone's face but your own.
+regulated context, and before processing anyone's face but your own. If you
+turn on database search, this applies to every photograph in the indexed
+folder, not only the query photo - biometric processing of a face someone
+else appears in requires the same basis whether it is compared once or
+indexed for repeated searching.
 
 ---
 

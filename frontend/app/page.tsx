@@ -70,8 +70,14 @@ export default function LandingPage() {
               It does not identify anyone
             </p>
             <p className="prose-note mt-2">
-              Facet compares two sets of photographs you already have. It has no
-              database, performs no search, and cannot tell you who someone is.
+              Facet compares two sets of photographs you already have. An
+              optional, off-by-default search against a single local folder
+              you name is the only exception, and it cannot reach any
+              external or shared data — see{" "}
+              <Link href="/privacy" className="underline hover:text-ink-200">
+                Privacy
+              </Link>
+              .
             </p>
           </div>
           <div>

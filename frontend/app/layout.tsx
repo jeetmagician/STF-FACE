@@ -60,6 +60,9 @@ function Header() {
           <Link href="/compare" className="transition-colors hover:text-ink-100">
             Compare
           </Link>
+          <Link href="/search" className="transition-colors hover:text-ink-100">
+            Database search
+          </Link>
         </nav>
       </div>
     </header>

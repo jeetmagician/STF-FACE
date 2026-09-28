@@ -7,6 +7,10 @@ backend/assets/models/antelope*/
 backend/assets/calibration/*.json
 !backend/assets/calibration/.gitkeep
 
+# Database-search index: embeddings + file paths of the operator's own local
+# photo folder. Never something to redistribute or commit.
+backend/assets/database_index/
+
 # Never commit photographs.
 *.jpg
 *.jpeg

@@ -13,10 +13,19 @@ from app.core.store import EphemeralStore
 from app.models.base import FaceEmbedder
 from app.models.registry import get_load_error, is_loaded
 from app.pipeline import visualize
+from app.pipeline import database_search
+from app.pipeline.database_search import run_database_search
+from app.pipeline.detection import detect_with_fallback
 from app.pipeline.loader import decode_image
 from app.pipeline.orchestrator import analyse_pair_with_fallback
 from app.pipeline.quality import assess_quality
-from app.schemas import AnalyzeResponse, DetectResponse, HealthResponse
+from app.schemas import (
+    AnalyzeResponse,
+    DatabaseSearchResponse,
+    DatabaseSearchStatus,
+    DetectResponse,
+    HealthResponse,
+)
 from app.scoring.calibration import CalibrationProfile, load_profile
 from app.api.deps import (
     calibration_dependency,
@@ -116,24 +125,8 @@ async def face_detect(
     data = await image.read()
     decoded = decode_image(data, settings, label="image")
 
-    faces = embedder.detect(decoded, max_faces=settings.max_faces_returned)
-    detector_backend = embedder.info.backend
-
-    used_fallback = False
-    if not faces and settings.enable_detection_fallback and detector_backend != "opencv":
-        from app.models.registry import get_fallback_embedder
-
-        fallback_embedder = get_fallback_embedder(settings)
-        faces = fallback_embedder.detect(decoded, max_faces=settings.max_faces_returned)
-        if faces:
-            used_fallback = True
-            detector_backend = fallback_embedder.info.backend
-            logger.info(
-                "Primary backend (%s) detected no face; live check succeeded "
-                "with fallback %s backend.",
-                embedder.info.backend,
-                detector_backend,
-            )
+    faces, used_embedder, used_fallback = detect_with_fallback(embedder, decoded, settings)
+    detector_backend = used_embedder.info.backend
 
     if not faces:
         raise NoFaceError(
@@ -186,6 +179,57 @@ async def face_detect(
         "preview": preview,
         "warnings": unique_warnings,
     }
+
+
+# ------------------------------------------------------- database search ---
+
+@router.get(
+    "/database-search/status", response_model=DatabaseSearchStatus, tags=["analysis"]
+)
+async def database_search_status(
+    settings: Settings = Depends(settings_dependency),
+) -> dict:
+    """Whether one-to-many search is turned on, and the current index size.
+
+    Cheap: reports the last-built index rather than building one, so the
+    interface can poll this before committing to a search.
+    """
+    return database_search.status(settings)
+
+
+@router.post(
+    "/database-search", response_model=DatabaseSearchResponse, tags=["analysis"]
+)
+async def database_search_route(
+    image: UploadFile = File(..., description="The photo to search for."),
+    face_index: int | None = Form(
+        None, description="Which detected face to search for, if the photo has several."
+    ),
+    top_n: int | None = Form(None, description="How many ranked matches to return."),
+    refresh_index: bool = Form(
+        False, description="Rescan the database folder for new/changed files first."
+    ),
+    settings: Settings = Depends(settings_dependency),
+    embedder: FaceEmbedder = Depends(embedder_dependency),
+    profile: CalibrationProfile = Depends(calibration_dependency),
+) -> dict:
+    """Search one photo against the local database folder and rank matches.
+
+    Off unless `ENABLE_DATABASE_SEARCH=true` and `DATABASE_SEARCH_DIR` point
+    at a real folder - see docs/ETHICS.md for why this is opt-in and scoped
+    to a folder the operator names explicitly, never a public or shared
+    image set.
+    """
+    data = await image.read()
+    return run_database_search(
+        image_bytes=data,
+        settings=settings,
+        embedder=embedder,
+        profile=profile,
+        face_index=face_index,
+        top_n=top_n,
+        refresh_index=refresh_index,
+    )
 
 
 # --------------------------------------------------------------- analyze ---

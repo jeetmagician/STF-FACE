@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+import tempfile
 import traceback
 from pathlib import Path
 
@@ -30,10 +31,17 @@ sys.path.insert(0, str(BACKEND_ROOT))
 sys.path.insert(0, str(BACKEND_ROOT / "tests"))
 
 from app.config import Settings  # noqa: E402
-from app.core.errors import MultipleFacesError, NoFaceError, QualityError  # noqa: E402
+from app.core.errors import (  # noqa: E402
+    DatabaseSearchDisabledError,
+    MultipleFacesError,
+    NoFaceError,
+    QualityError,
+)
 from app.core.store import EphemeralStore  # noqa: E402
 from app.models.alignment import apply_affine, umeyama_similarity  # noqa: E402
 from app.models.base import ARCFACE_112_TEMPLATE  # noqa: E402
+from app.pipeline import database_search  # noqa: E402
+from app.pipeline.database_search import build_index, run_database_search  # noqa: E402
 from app.pipeline.loader import decode_image  # noqa: E402
 from app.pipeline.orchestrator import analyse_pair, process_side  # noqa: E402
 from app.pipeline.quality import assess_quality  # noqa: E402
@@ -583,6 +591,131 @@ def t_store_disabled():
     assert store.size == 0
 
 
+# --------------------------------------------------------- database search ---
+
+def database_settings(tmp_dir: Path, **overrides) -> Settings:
+    base = dict(
+        enable_database_search=True,
+        database_search_dir=tmp_dir,
+        database_search_cache_dir=tmp_dir / "_cache",
+    )
+    base.update(overrides)
+    return lenient_settings(**base)
+
+
+@check("Database search refuses when disabled")
+def t_db_search_disabled():
+    with tempfile.TemporaryDirectory() as tmp:
+        settings = database_settings(Path(tmp), enable_database_search=False)
+        try:
+            run_database_search(encode_jpeg(make_face(1)), settings, EMBEDDER, default_profile("mock"))
+        except DatabaseSearchDisabledError:
+            return
+        raise AssertionError("ran a search while disabled")
+
+
+@check("Index build embeds library photos and skips faceless or corrupt ones")
+def t_db_index_build():
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        (root / "alice.jpg").write_bytes(encode_jpeg(make_face(1)))
+        (root / "bob.jpg").write_bytes(encode_jpeg(make_face(2)))
+        (root / "carol.jpg").write_bytes(encode_jpeg(make_face(3)))
+        (root / "blank.jpg").write_bytes(encode_jpeg(np.full((200, 200, 3), 18, dtype=np.uint8)))
+        (root / "corrupt.jpg").write_bytes(b"not an image")
+
+        index = build_index(database_settings(root), EMBEDDER, force=True)
+        assert len(index.entries) == 3, f"expected 3 indexed photos, got {len(index.entries)}"
+        assert index.skipped_no_face == 1
+        assert index.skipped_error == 1
+
+
+@check("Incremental rebuild picks up a changed file without re-embedding the rest")
+def t_db_index_incremental():
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        (root / "alice.jpg").write_bytes(encode_jpeg(make_face(1)))
+        (root / "bob.jpg").write_bytes(encode_jpeg(make_face(2)))
+        settings = database_settings(root)
+
+        first = build_index(settings, EMBEDDER, force=True)
+        bob_entry = next(e for e in first.entries if "bob" in e.path)
+
+        # Replace bob.jpg's content with a different identity.
+        (root / "bob.jpg").write_bytes(encode_jpeg(make_face(9)))
+        second = build_index(settings, EMBEDDER, force=False)
+        assert len(second.entries) == 2
+
+        new_bob = next(e for e in second.entries if "bob" in e.path)
+        assert new_bob.embedding != bob_entry.embedding, "changed file kept its stale embedding"
+
+        alice_entry_before = next(e for e in first.entries if "alice" in e.path)
+        alice_entry_after = next(e for e in second.entries if "alice" in e.path)
+        assert alice_entry_before.embedding == alice_entry_after.embedding, (
+            "unchanged file was needlessly re-embedded"
+        )
+
+
+@check("Search ranks the matching identity highest")
+def t_db_search_ranks_match():
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        (root / "alice.jpg").write_bytes(encode_jpeg(make_face(1)))
+        (root / "bob.jpg").write_bytes(encode_jpeg(make_face(30)))
+        (root / "carol.jpg").write_bytes(encode_jpeg(make_face(70)))
+        database_search.reset()
+        settings = database_settings(root)
+
+        # A small brightness shift, not a large identity gap: the mock
+        # embedding is pixel-reduction based (see fixtures.MockEmbedder), so
+        # its identity signal is subtle enough that JPEG re-encoding can bury
+        # a strong lighting change. This still exercises the real question -
+        # does a different photo of the *same* face rank above other faces.
+        query = encode_jpeg(make_face(30, brightness=1.02))
+        result = run_database_search(query, settings, EMBEDDER, default_profile("mock"))
+
+        assert result["indexed_photo_count"] == 3
+        assert result["matches"], "no matches returned"
+        assert "bob" in result["matches"][0]["filename"], (
+            f"expected bob.jpg on top, got {result['matches'][0]['filename']}"
+        )
+        assert result["matches"][0]["raw_similarity"] > result["matches"][-1]["raw_similarity"]
+        database_search.reset()
+
+
+@check("Multiple faces in the query demand explicit selection")
+def t_db_search_multi_face():
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        (root / "alice.jpg").write_bytes(encode_jpeg(make_face(1)))
+        database_search.reset()
+        settings = database_settings(root)
+
+        query = encode_jpeg(make_face(1, second_face=True))
+        try:
+            run_database_search(query, settings, EMBEDDER, default_profile("mock"))
+        except MultipleFacesError as exc:
+            assert len(exc.faces) >= 2
+            return
+        raise AssertionError("silently picked a face in the query photo")
+
+
+@check("Query photo with no face is refused, not scored")
+def t_db_search_no_face():
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        (root / "alice.jpg").write_bytes(encode_jpeg(make_face(1)))
+        database_search.reset()
+        settings = database_settings(root)
+
+        blank = encode_jpeg(np.full((200, 200, 3), 18, dtype=np.uint8))
+        try:
+            run_database_search(blank, settings, EMBEDDER, default_profile("mock"))
+        except NoFaceError:
+            return
+        raise AssertionError("scored a query photo with no face")
+
+
 def main() -> int:
     global VERBOSE
     parser = argparse.ArgumentParser(description=__doc__)
@@ -618,6 +751,10 @@ def main() -> int:
             t_visualisations, t_response_language, t_ordering,
         ],
         "Ephemeral store": [t_store, t_store_disabled],
+        "Database search": [
+            t_db_search_disabled, t_db_index_build, t_db_index_incremental,
+            t_db_search_ranks_match, t_db_search_multi_face, t_db_search_no_face,
+        ],
     }
 
     for group, tests in groups.items():

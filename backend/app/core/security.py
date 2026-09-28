@@ -84,7 +84,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         if path.startswith("/api/health") or request.method == "OPTIONS":
             return await call_next(request)
 
-        if path.startswith("/api/analyze"):
+        if path.startswith("/api/analyze") or path == "/api/database-search":
             limit = self.settings.rate_limit_analyze_requests
             window = self.settings.rate_limit_analyze_window_seconds
             scope = "analyze"

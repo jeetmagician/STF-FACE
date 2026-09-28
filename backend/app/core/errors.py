@@ -91,3 +91,17 @@ class AuthError(FacetError):
 class SessionError(FacetError):
     http_status = 404
     default_code = "session_expired"
+
+
+class DatabaseSearchDisabledError(FacetError):
+    """The operator has not turned on one-to-many database search."""
+
+    http_status = 403
+    default_code = "database_search_disabled"
+
+
+class DatabaseSearchConfigError(FacetError):
+    """Database search is enabled but its folder is missing or misconfigured."""
+
+    http_status = 503
+    default_code = "database_search_misconfigured"

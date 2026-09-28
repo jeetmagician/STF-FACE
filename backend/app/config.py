@@ -113,6 +113,22 @@ class Settings(BaseSettings):
     band_high: float = 70.0
     band_moderate: float = 45.0
 
+    # ---------------------------------------------------- database search ---
+    # One-to-many search of a single photo against a folder of photographs the
+    # operator points at explicitly - e.g. their own desktop photo library.
+    # Off by default and scoped deliberately narrow: it is a personal-library
+    # lookup tool, not infrastructure for identifying people at scale. See
+    # docs/ETHICS.md. It never runs against anything other than
+    # `database_search_dir`, and that folder is never exposed over a URL -
+    # matches are returned as rendered thumbnails plus the file path, the same
+    # policy the rest of this service applies to uploaded photographs.
+    enable_database_search: bool = False
+    database_search_dir: Path | None = None
+    database_search_top_n: int = 10
+    database_search_max_results: int = 25  # hard cap regardless of requested top_n
+    database_search_max_images: int = 20_000  # safety cap on indexed files
+    database_search_cache_dir: Path = BACKEND_ROOT / "assets" / "database_index"
+
     # ------------------------------------------------------------- storage ---
     # Ephemeral in-memory store used only so the user can pick a face without
     # re-uploading. Never written to disk, never served as a public URL.
@@ -126,6 +142,15 @@ class Settings(BaseSettings):
         if isinstance(v, str):
             return [o.strip() for o in v.split(",") if o.strip()]
         return v
+
+    @field_validator("database_search_dir", mode="before")
+    @classmethod
+    def _expand_database_dir(cls, v: object) -> object:
+        if isinstance(v, str) and v.strip():
+            return Path(v).expanduser()
+        if isinstance(v, Path):
+            return v.expanduser()
+        return None
 
     @field_validator("prior_same_person")
     @classmethod

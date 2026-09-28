@@ -185,6 +185,37 @@ class DetectResponse(BaseModel):
     warnings: list[str]
 
 
+class DatabaseMatchInfo(BaseModel):
+    rank: int
+    path: str
+    filename: str
+    raw_similarity: float
+    similarity_score: float
+    confidence_level: str
+    confidence_key: str
+    thumbnail: str
+
+
+class DatabaseSearchResponse(BaseModel):
+    query_preview: str
+    indexed_photo_count: int
+    skipped_no_face: int
+    skipped_error: int
+    matches: list[DatabaseMatchInfo]
+    warnings: list[str]
+
+
+class DatabaseSearchStatus(BaseModel):
+    enabled: bool
+    directory: str | None
+    directory_exists: bool
+    indexed_photo_count: int | None
+    skipped_no_face: int | None
+    skipped_error: int | None
+    backend: str | None
+    built_at: float | None
+
+
 class HealthResponse(BaseModel):
     status: str
     version: str
