@@ -35,9 +35,15 @@ function Figure({
 export default function ResultPanel({
   result,
   onReset,
+  resetLabel = "Compare another pair",
+  oldLabel = "Older photograph",
+  newLabel = "Newer photograph",
 }: {
   result: AnalyzeResponse;
   onReset: () => void;
+  resetLabel?: string;
+  oldLabel?: string;
+  newLabel?: string;
 }) {
   const { scoring, calibration, visualisations: viz } = result;
 
@@ -106,18 +112,18 @@ export default function ResultPanel({
 
           <div className="mt-5 grid gap-5 sm:grid-cols-2">
             <div>
-              <p className="label-mono mb-2">Older photograph</p>
+              <p className="label-mono mb-2">{oldLabel}</p>
               <Figure
                 src={viz.old_annotated}
-                alt="Older photograph with the detected face outlined"
+                alt={`${oldLabel} with the detected face outlined`}
                 caption="Detected face and landmarks"
               />
             </div>
             <div>
-              <p className="label-mono mb-2">Newer photograph</p>
+              <p className="label-mono mb-2">{newLabel}</p>
               <Figure
                 src={viz.new_annotated}
-                alt="Newer photograph with the detected face outlined"
+                alt={`${newLabel} with the detected face outlined`}
                 caption="Detected face and landmarks"
               />
             </div>
@@ -214,11 +220,11 @@ export default function ResultPanel({
 
         <div className="mt-5 grid gap-4 sm:grid-cols-2">
           <QualityPanel
-            title="Older photograph quality"
+            title={`${oldLabel} quality`}
             quality={result.image_quality_old}
           />
           <QualityPanel
-            title="Newer photograph quality"
+            title={`${newLabel} quality`}
             quality={result.image_quality_new}
           />
         </div>
@@ -321,11 +327,11 @@ export default function ResultPanel({
       </section>
 
       <div
-        className="flex animate-fade-up justify-center pt-2"
+        className="no-print flex animate-fade-up justify-center pt-2"
         style={{ animationDelay: "240ms" }}
       >
         <button type="button" onClick={onReset} className="btn-ghost">
-          Compare another pair
+          {resetLabel}
         </button>
       </div>
     </div>

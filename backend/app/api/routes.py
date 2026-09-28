@@ -14,7 +14,7 @@ from app.models.base import FaceEmbedder
 from app.models.registry import get_load_error, is_loaded
 from app.pipeline import visualize
 from app.pipeline import database_search
-from app.pipeline.database_search import run_database_search
+from app.pipeline.database_search import run_database_compare, run_database_search
 from app.pipeline.detection import detect_with_fallback
 from app.pipeline.loader import decode_image
 from app.pipeline.orchestrator import analyse_pair_with_fallback
@@ -237,6 +237,39 @@ async def database_search_route(
         face_index=face_index,
         top_n=top_n,
         refresh_index=refresh_index,
+    )
+
+
+@router.post(
+    "/database-search/compare", response_model=AnalyzeResponse, tags=["analysis"]
+)
+async def database_search_compare(
+    image: UploadFile = File(..., description="The same photo that was searched."),
+    path: str = Form(..., description="The `path` of a match from a prior search."),
+    face_index: int | None = Form(
+        None, description="Which detected face was used in the search, if several."
+    ),
+    include_visualisations: bool = Form(True),
+    settings: Settings = Depends(settings_dependency),
+    embedder: FaceEmbedder = Depends(embedder_dependency),
+    profile: CalibrationProfile = Depends(calibration_dependency),
+) -> dict:
+    """Full one-to-one comparison behind a single search result.
+
+    Not a different kind of evidence from `/api/analyze` - the same
+    pipeline, region analysis and disclaimers, applied to the query photo
+    and one specific indexed photo, so "why did this match" is answered with
+    the same scrutiny as any other comparison in this tool.
+    """
+    data = await image.read()
+    return run_database_compare(
+        image_bytes=data,
+        path=path,
+        settings=settings,
+        embedder=embedder,
+        profile=profile,
+        face_index=face_index,
+        include_visualisations=include_visualisations,
     )
 
 

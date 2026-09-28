@@ -105,3 +105,10 @@ class DatabaseSearchConfigError(FacetError):
 
     http_status = 503
     default_code = "database_search_misconfigured"
+
+
+class DatabaseSearchPathError(FacetError):
+    """A requested photo is not (or no longer) part of the indexed folder."""
+
+    http_status = 404
+    default_code = "database_photo_not_found"

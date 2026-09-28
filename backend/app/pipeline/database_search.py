@@ -37,6 +37,7 @@ from app.config import Settings
 from app.core.errors import (
     DatabaseSearchConfigError,
     DatabaseSearchDisabledError,
+    DatabaseSearchPathError,
     MultipleFacesError,
     NoFaceError,
 )
@@ -44,6 +45,7 @@ from app.models.base import FaceEmbedder
 from app.pipeline import visualize
 from app.pipeline.detection import detect_with_fallback
 from app.pipeline.loader import decode_image
+from app.pipeline.orchestrator import analyse_pair_with_fallback
 from app.scoring import bands
 from app.scoring.calibration import CalibrationProfile, load_profile
 
@@ -447,3 +449,59 @@ def run_database_search(
         "matches": matches,
         "warnings": warnings,
     }
+
+
+def run_database_compare(
+    image_bytes: bytes,
+    path: str,
+    settings: Settings,
+    embedder: FaceEmbedder,
+    profile: CalibrationProfile,
+    face_index: int | None = None,
+    include_visualisations: bool = True,
+) -> dict:
+    """Full one-to-one comparison between the query photo and one indexed
+    library photo - the detail behind a single search result.
+
+    A search match is not a different kind of evidence from a Compare-page
+    result: it gets exactly the same pipeline (`analyse_pair_with_fallback`),
+    the same region analysis, quality gates, uncertainty sources and
+    disclaimers, not a bespoke "why this matched" explanation invented for
+    this feature.
+    """
+    if not settings.enable_database_search:
+        raise DatabaseSearchDisabledError(
+            "Database search is disabled on this instance."
+        )
+
+    root = settings.database_search_dir
+    if root is None or not root.is_dir():
+        raise DatabaseSearchConfigError(
+            f"DATABASE_SEARCH_DIR is not set to an existing folder ({root})."
+        )
+
+    # `path` comes back from the client exactly as this module returned it in
+    # a prior search response, but a client can send anything - resolve and
+    # confirm it is still inside the configured folder before ever reading
+    # it, or this becomes an arbitrary local file read.
+    candidate = Path(path).resolve()
+    if not candidate.is_relative_to(root.resolve()) or not candidate.is_file():
+        raise DatabaseSearchPathError(
+            "That photo is not part of the current database folder."
+        )
+
+    query_image = decode_image(image_bytes, settings, label="query photo")
+    library_image = decode_image(
+        candidate.read_bytes(), settings, label="database photo"
+    )
+
+    return analyse_pair_with_fallback(
+        old_images=[query_image],
+        new_images=[library_image],
+        embedder=embedder,
+        settings=settings,
+        profile=profile,
+        old_face_indices=[face_index] if face_index is not None else None,
+        new_face_indices=None,
+        include_visualisations=include_visualisations,
+    )

@@ -3,13 +3,17 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import Dropzone from "@/components/Dropzone";
+import ResultPanel from "@/components/ResultPanel";
 import {
   ApiError,
+  compareDatabaseMatch,
   detectFaces,
   getDatabaseSearchStatus,
   searchDatabase,
 } from "@/lib/api";
 import type {
+  AnalyzeResponse,
+  DatabaseMatchInfo,
   DatabaseSearchResponse,
   DatabaseSearchStatus,
   LocalPhoto,
@@ -35,6 +39,11 @@ export default function SearchPage() {
   const [result, setResult] = useState<DatabaseSearchResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [consent, setConsent] = useState(false);
+
+  const [activeMatch, setActiveMatch] = useState<DatabaseMatchInfo | null>(null);
+  const [matchDetail, setMatchDetail] = useState<AnalyzeResponse | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState<string | null>(null);
 
   const objectUrls = useRef<Set<string>>(new Set());
 
@@ -144,8 +153,98 @@ export default function SearchPage() {
     setError(null);
     setConsent(false);
     setStage("upload");
+    setActiveMatch(null);
+    setMatchDetail(null);
+    setDetailError(null);
     window.scrollTo({ top: 0, behavior: "smooth" });
   }, [photo]);
+
+  const openDetail = useCallback(
+    async (match: DatabaseMatchInfo) => {
+      if (!photo) return;
+      setActiveMatch(match);
+      setMatchDetail(null);
+      setDetailError(null);
+      setDetailLoading(true);
+      try {
+        const detail = await compareDatabaseMatch({
+          file: photo.file,
+          path: match.path,
+          faceIndex: photo.selectedFaceIndex,
+        });
+        setMatchDetail(detail);
+      } catch (cause: unknown) {
+        setDetailError(
+          cause instanceof ApiError
+            ? cause.message
+            : "Could not load the comparison details for this match.",
+        );
+      } finally {
+        setDetailLoading(false);
+      }
+    },
+    [photo],
+  );
+
+  const closeDetail = useCallback(() => {
+    setActiveMatch(null);
+    setMatchDetail(null);
+    setDetailError(null);
+  }, []);
+
+  if (stage === "result" && result && activeMatch) {
+    return (
+      <div className="mx-auto max-w-4xl px-6 py-12">
+        <div className="no-print mb-6 flex flex-wrap items-center gap-3">
+          <button type="button" onClick={closeDetail} className="btn-ghost">
+            ← Back to results
+          </button>
+          {matchDetail && (
+            <button
+              type="button"
+              onClick={() => window.print()}
+              className="btn-primary"
+            >
+              Export as PDF
+            </button>
+          )}
+        </div>
+
+        <div className="no-print mb-6 flex items-center gap-4 panel p-4">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={activeMatch.thumbnail}
+            alt=""
+            className="h-14 w-14 shrink-0 rounded-md object-cover"
+          />
+          <div className="min-w-0">
+            <p className="truncate text-sm text-ink-200">{activeMatch.filename}</p>
+            <p className="truncate text-[11px] text-ink-500">{activeMatch.path}</p>
+          </div>
+        </div>
+
+        {detailLoading && (
+          <p className="text-sm text-ink-400">Loading the full comparison…</p>
+        )}
+
+        {detailError && (
+          <div className="rounded-lg border border-signal-low/30 bg-signal-low/[0.07] px-4 py-3">
+            <p className="text-sm text-signal-low">{detailError}</p>
+          </div>
+        )}
+
+        {matchDetail && (
+          <ResultPanel
+            result={matchDetail}
+            onReset={closeDetail}
+            resetLabel="Back to results"
+            oldLabel="Your query photo"
+            newLabel="Matched database photo"
+          />
+        )}
+      </div>
+    );
+  }
 
   if (stage === "result" && result) {
     return (
@@ -156,6 +255,7 @@ export default function SearchPage() {
         <p className="prose-note mt-2 max-w-2xl">
           Ranked against {result.indexed_photo_count} indexed photograph
           {result.indexed_photo_count === 1 ? "" : "s"} in the local database folder.
+          Click a match to see the full comparison behind its score.
         </p>
 
         {result.warnings.length > 0 && (
@@ -173,24 +273,30 @@ export default function SearchPage() {
         ) : (
           <ul className="mt-8 space-y-3">
             {result.matches.map((match) => (
-              <li key={match.path} className="panel flex items-center gap-4 p-4">
-                <span className="font-mono text-xs text-ink-500">#{match.rank}</span>
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={match.thumbnail}
-                  alt=""
-                  className="h-16 w-16 shrink-0 rounded-md object-cover"
-                />
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm text-ink-200">{match.filename}</p>
-                  <p className="truncate text-[11px] text-ink-500">{match.path}</p>
-                </div>
-                <div className="shrink-0 text-right">
-                  <p className={`font-mono text-lg ${confidenceTone(match.confidence_key)}`}>
-                    {match.similarity_score.toFixed(1)}
-                  </p>
-                  <p className="text-[11px] text-ink-500">{match.confidence_level}</p>
-                </div>
+              <li key={match.path}>
+                <button
+                  type="button"
+                  onClick={() => openDetail(match)}
+                  className="panel flex w-full items-center gap-4 p-4 text-left transition-colors hover:border-ink-600"
+                >
+                  <span className="font-mono text-xs text-ink-500">#{match.rank}</span>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={match.thumbnail}
+                    alt=""
+                    className="h-16 w-16 shrink-0 rounded-md object-cover"
+                  />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm text-ink-200">{match.filename}</p>
+                    <p className="truncate text-[11px] text-ink-500">{match.path}</p>
+                  </div>
+                  <div className="shrink-0 text-right">
+                    <p className={`font-mono text-lg ${confidenceTone(match.confidence_key)}`}>
+                      {match.similarity_score.toFixed(1)}
+                    </p>
+                    <p className="text-[11px] text-ink-500">{match.confidence_level}</p>
+                  </div>
+                </button>
               </li>
             ))}
           </ul>

@@ -13,7 +13,7 @@ export const metadata: Metadata = {
 
 function Header() {
   return (
-    <header className="border-b border-ink-800/80">
+    <header className="no-print border-b border-ink-800/80">
       <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-5">
         <Link href="/" className="group flex items-center gap-3">
           <svg
@@ -71,7 +71,7 @@ function Header() {
 
 function Footer() {
   return (
-    <footer className="mt-24 border-t border-ink-800/80">
+    <footer className="no-print mt-24 border-t border-ink-800/80">
       <div className="mx-auto max-w-6xl px-6 py-10">
         <p className="max-w-3xl text-xs leading-relaxed text-ink-500">
           Facet reports facial similarity as measured by a face-recognition

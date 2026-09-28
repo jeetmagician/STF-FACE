@@ -301,6 +301,14 @@ curl -X POST http://localhost:8000/api/database-search \
   -F "image=@query.jpg" -F "top_n=10"
 ```
 
+Each ranked match carries a `path`. Clicking a result in the interface (or
+calling `POST /api/database-search/compare` with that same query photo and
+`path`) runs the exact same pairwise pipeline as the Compare page - region
+analysis, quality gates, uncertainty sources and all - between the query
+photo and that one indexed photo, and the interface offers an "Export as
+PDF" on that detail view (the browser's own print-to-PDF; nothing is
+generated or sent anywhere else).
+
 ---
 
 ## Testing
@@ -336,6 +344,7 @@ never claims a cause.
 | `DELETE /api/session/{token}` | Discard retained images immediately |
 | `GET /api/database-search/status` | Whether database search is on, and the current index size |
 | `POST /api/database-search` | Search one photo against the local database folder (off by default) |
+| `POST /api/database-search/compare` | Full pairwise detail behind one search result - the same pipeline as `/api/analyze` |
 
 `POST /api/analyze` takes `old_photos[]` and `new_photos[]` (1–5 each), with
 optional `old_face_indices` / `new_face_indices` JSON arrays.

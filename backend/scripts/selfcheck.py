@@ -33,6 +33,7 @@ sys.path.insert(0, str(BACKEND_ROOT / "tests"))
 from app.config import Settings  # noqa: E402
 from app.core.errors import (  # noqa: E402
     DatabaseSearchDisabledError,
+    DatabaseSearchPathError,
     MultipleFacesError,
     NoFaceError,
     QualityError,
@@ -47,7 +48,11 @@ from app.models.base import (  # noqa: E402
     l2_normalise,
 )
 from app.pipeline import database_search  # noqa: E402
-from app.pipeline.database_search import build_index, run_database_search  # noqa: E402
+from app.pipeline.database_search import (  # noqa: E402
+    build_index,
+    run_database_compare,
+    run_database_search,
+)
 from app.pipeline.loader import decode_image  # noqa: E402
 from app.pipeline.orchestrator import analyse_pair, process_side  # noqa: E402
 from app.pipeline.quality import assess_quality  # noqa: E402
@@ -799,6 +804,51 @@ def t_db_search_query_fallback():
         )
 
 
+@check("Compare detail behind a match reuses the full pairwise pipeline")
+def t_db_compare_detail():
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        (root / "alice.jpg").write_bytes(encode_jpeg(make_face(1)))
+        database_search.reset()
+        settings = database_settings(root)
+
+        query = encode_jpeg(make_face(1, brightness=1.03))
+        result = run_database_compare(
+            image_bytes=query,
+            path=str(root / "alice.jpg"),
+            settings=settings,
+            embedder=EMBEDDER,
+            profile=default_profile("mock"),
+        )
+        for key in ("similarity_score", "region_analysis", "uncertainty_sources", "scoring"):
+            assert key in result, f"missing field: {key}"
+        database_search.reset()
+
+
+@check("Compare detail refuses a path outside the database folder")
+def t_db_compare_path_traversal():
+    with tempfile.TemporaryDirectory() as tmp, tempfile.TemporaryDirectory() as other:
+        root = Path(tmp)
+        (root / "alice.jpg").write_bytes(encode_jpeg(make_face(1)))
+        outside = Path(other) / "secret.jpg"
+        outside.write_bytes(encode_jpeg(make_face(2)))
+        database_search.reset()
+        settings = database_settings(root)
+
+        query = encode_jpeg(make_face(1))
+        try:
+            run_database_compare(
+                image_bytes=query,
+                path=str(outside),
+                settings=settings,
+                embedder=EMBEDDER,
+                profile=default_profile("mock"),
+            )
+        except DatabaseSearchPathError:
+            return
+        raise AssertionError("read a file outside the configured database folder")
+
+
 def main() -> int:
     global VERBOSE
     parser = argparse.ArgumentParser(description=__doc__)
@@ -837,7 +887,7 @@ def main() -> int:
         "Database search": [
             t_db_search_disabled, t_db_index_build, t_db_index_incremental,
             t_db_search_ranks_match, t_db_search_multi_face, t_db_search_no_face,
-            t_db_search_query_fallback,
+            t_db_search_query_fallback, t_db_compare_detail, t_db_compare_path_traversal,
         ],
     }
 

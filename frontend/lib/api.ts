@@ -166,6 +166,34 @@ export async function searchDatabase(
   }
 }
 
+export interface DatabaseCompareArgs {
+  file: File;
+  path: string;
+  faceIndex?: number;
+}
+
+export async function compareDatabaseMatch(
+  args: DatabaseCompareArgs,
+): Promise<AnalyzeResponse> {
+  const form = new FormData();
+  form.append("image", args.file);
+  form.append("path", args.path);
+  if (args.faceIndex !== undefined) {
+    form.append("face_index", String(args.faceIndex));
+  }
+
+  try {
+    const response = await fetch(`${API_URL}/api/database-search/compare`, {
+      method: "POST",
+      body: form,
+      headers: authHeaders(),
+    });
+    return await parse<AnalyzeResponse>(response);
+  } catch (error) {
+    return networkError(error);
+  }
+}
+
 /** Ask the backend to discard any images it is holding for face selection. */
 export async function discardSession(token: string): Promise<void> {
   try {
