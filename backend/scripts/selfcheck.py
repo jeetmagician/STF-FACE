@@ -39,7 +39,13 @@ from app.core.errors import (  # noqa: E402
 )
 from app.core.store import EphemeralStore  # noqa: E402
 from app.models.alignment import apply_affine, umeyama_similarity  # noqa: E402
-from app.models.base import ARCFACE_112_TEMPLATE  # noqa: E402
+from app.models.base import (  # noqa: E402
+    ARCFACE_112_TEMPLATE,
+    DetectedFace,
+    FaceEmbedder,
+    ModelInfo,
+    l2_normalise,
+)
 from app.pipeline import database_search  # noqa: E402
 from app.pipeline.database_search import build_index, run_database_search  # noqa: E402
 from app.pipeline.loader import decode_image  # noqa: E402
@@ -603,6 +609,47 @@ def database_settings(tmp_dir: Path, **overrides) -> Settings:
     return lenient_settings(**base)
 
 
+class _StubEmbedder(FaceEmbedder):
+    """Always "detects" exactly one face with a fixed embedding.
+
+    A plumbing double standing in for a *second*, distinct backend in a
+    fallback scenario - not a detector. Used only to prove that a query
+    routed to the fallback backend gets searched against that backend's own
+    index, never the primary's; the real fallback is always a full OpenCV
+    backend, which selfcheck must not depend on downloading weights for.
+    """
+
+    def __init__(self, backend: str, vector: np.ndarray):
+        self._backend = backend
+        self._vector = l2_normalise(vector)
+
+    @property
+    def info(self) -> ModelInfo:
+        return ModelInfo(
+            backend=self._backend,
+            detector="stub",
+            recognizer="stub",
+            embedding_dim=len(self._vector),
+            license="N/A - test fixture",
+            commercial_use=False,
+        )
+
+    def detect(self, image_bgr: np.ndarray, max_faces: int = 8) -> list[DetectedFace]:
+        height, width = image_bgr.shape[:2]
+        return [
+            DetectedFace(
+                index=0,
+                bbox=(0.0, 0.0, float(width), float(height)),
+                detection_score=1.0,
+                keypoints_5=np.zeros((5, 2), dtype=np.float32),
+                aligned=np.zeros((112, 112, 3), dtype=np.uint8),
+            )
+        ]
+
+    def embed(self, aligned_bgr: np.ndarray) -> np.ndarray:
+        return self._vector
+
+
 @check("Database search refuses when disabled")
 def t_db_search_disabled():
     with tempfile.TemporaryDirectory() as tmp:
@@ -706,7 +753,12 @@ def t_db_search_no_face():
         root = Path(tmp)
         (root / "alice.jpg").write_bytes(encode_jpeg(make_face(1)))
         database_search.reset()
-        settings = database_settings(root)
+        # Fallback disabled: the mock backend isn't "opencv", so
+        # detect_with_fallback would otherwise try to load the *real* OpenCV
+        # backend here, which needs downloaded weights selfcheck must not
+        # require. A blank image has no face for either backend to find, so
+        # this does not change what the check demonstrates.
+        settings = database_settings(root, enable_detection_fallback=False)
 
         blank = encode_jpeg(np.full((200, 200, 3), 18, dtype=np.uint8))
         try:
@@ -714,6 +766,37 @@ def t_db_search_no_face():
         except NoFaceError:
             return
         raise AssertionError("scored a query photo with no face")
+
+
+@check("A query the primary backend can't see searches the fallback's own index")
+def t_db_search_query_fallback():
+    import app.models.registry as registry
+
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        (root / "alice.jpg").write_bytes(encode_jpeg(make_face(1)))
+        database_search.reset()
+        settings = database_settings(root, enable_detection_fallback=True)
+
+        stub = _StubEmbedder("stub-fallback", np.ones(16, dtype=np.float32))
+        original_getter = registry.get_fallback_embedder
+        registry.get_fallback_embedder = lambda _settings: stub
+        try:
+            # EMBEDDER (the mock, standing in for the primary) cannot find a
+            # face in a blank canvas; the patched-in stub always can, so this
+            # only succeeds if the search actually switched backends rather
+            # than refusing outright.
+            blank = encode_jpeg(np.full((200, 200, 3), 18, dtype=np.uint8))
+            result = run_database_search(blank, settings, EMBEDDER, default_profile("mock"))
+        finally:
+            registry.get_fallback_embedder = original_getter
+            database_search.reset()
+
+        assert result["indexed_photo_count"] == 1, "the fallback's own index was not built"
+        assert result["matches"], "fallback search returned no matches"
+        assert any("fallback" in w.lower() for w in result["warnings"]), (
+            "no warning explained that the fallback backend was used"
+        )
 
 
 def main() -> int:
@@ -754,6 +837,7 @@ def main() -> int:
         "Database search": [
             t_db_search_disabled, t_db_index_build, t_db_index_incremental,
             t_db_search_ranks_match, t_db_search_multi_face, t_db_search_no_face,
+            t_db_search_query_fallback,
         ],
     }
 

@@ -9,13 +9,16 @@ rest of this service applies to uploaded photographs. It is a
 personal-library lookup tool, not infrastructure for identifying people at
 scale. See docs/ETHICS.md.
 
-The index is built with, and only ever searched with, the active
-MODEL_BACKEND - never the OpenCV fallback. A photo (query or library) that
-only the fallback can find a face in is skipped rather than mixed in: cosine
-similarity between embeddings from two different networks is meaningless,
-and calibration is fitted per backend, so a mixed-backend index could not be
-scored honestly. See `pipeline.detection.detect_with_fallback`, which is
-deliberately not used here.
+A single search always stays within one backend's embedding space: mixing
+embeddings from two different networks is meaningless, and calibration is
+fitted per backend, so a mixed-backend comparison could not be scored
+honestly. In practice that means two independent, self-consistent indices
+exist side by side - one per backend - each built with, and only ever
+searched with, its own embedder (see `pipeline.detection.detect_with_fallback`,
+used only to decide which of the two a given *query* belongs in, never to mix
+their entries). If the primary backend cannot find a face in the query photo
+but the fallback can, the search runs entirely against the fallback's own
+index instead, not against a patched-together mix of the two.
 """
 
 from __future__ import annotations
@@ -39,9 +42,10 @@ from app.core.errors import (
 )
 from app.models.base import FaceEmbedder
 from app.pipeline import visualize
+from app.pipeline.detection import detect_with_fallback
 from app.pipeline.loader import decode_image
 from app.scoring import bands
-from app.scoring.calibration import CalibrationProfile
+from app.scoring.calibration import CalibrationProfile, load_profile
 
 logger = logging.getLogger(__name__)
 
@@ -73,8 +77,8 @@ class DatabaseIndex:
         return np.array([e.embedding for e in self.entries], dtype=np.float32)
 
 
-_index: DatabaseIndex | None = None
-_index_lock = threading.Lock()
+_indices: dict[str, DatabaseIndex] = {}
+_indices_lock = threading.Lock()
 
 
 def _cache_path(settings: Settings, backend: str) -> Path:
@@ -213,28 +217,39 @@ def build_index(
 def get_index(
     settings: Settings, embedder: FaceEmbedder, refresh: bool = False
 ) -> DatabaseIndex:
-    """In-memory singleton, rebuilt (incrementally) on first use or on request."""
-    global _index
-    with _index_lock:
-        if _index is not None and not refresh and _index.backend == embedder.info.backend:
-            return _index
-        _index = build_index(settings, embedder, force=False)
-        return _index
+    """In-memory cache of one index per backend, rebuilt (incrementally) on
+    first use of that backend or on request.
+
+    A search may run against either backend depending on which one can
+    detect the query's face (see `run_database_search`), so both indices are
+    kept side by side rather than evicting one when the other is requested.
+    """
+    backend = embedder.info.backend
+    if not refresh:
+        with _indices_lock:
+            cached = _indices.get(backend)
+        if cached is not None:
+            return cached
+
+    index = build_index(settings, embedder, force=False)
+    with _indices_lock:
+        _indices[backend] = index
+    return index
 
 
 def reset() -> None:
-    """Drop the cached index. Used by tests."""
-    global _index
-    with _index_lock:
-        _index = None
+    """Drop every cached index. Used by tests."""
+    with _indices_lock:
+        _indices.clear()
 
 
-def status(settings: Settings) -> dict:
-    """Report configuration and, if one has been built, the current index -
-    without triggering a build. Building can be slow on a large folder, so
-    the status check the UI polls before a search must stay cheap."""
-    with _index_lock:
-        idx = _index
+def status(settings: Settings, embedder: FaceEmbedder | None = None) -> dict:
+    """Report configuration and, if one has been built, the primary backend's
+    index - without triggering a build. Building can be slow on a large
+    folder, so the status check the UI polls before a search must stay cheap.
+    """
+    with _indices_lock:
+        idx = _indices.get(embedder.info.backend) if embedder else None
     directory = settings.database_search_dir
     return {
         "enabled": settings.enable_database_search,
@@ -243,7 +258,7 @@ def status(settings: Settings) -> dict:
         "indexed_photo_count": len(idx.entries) if idx else None,
         "skipped_no_face": idx.skipped_no_face if idx else None,
         "skipped_error": idx.skipped_error if idx else None,
-        "backend": idx.backend if idx else None,
+        "backend": idx.backend if idx else (embedder.info.backend if embedder else None),
         "built_at": idx.built_at if idx else None,
     }
 
@@ -287,15 +302,26 @@ def run_database_search(
         )
 
     decoded = decode_image(image_bytes, settings, label="query photo")
-    faces = embedder.detect(decoded, max_faces=settings.max_faces_returned)
+    faces, search_embedder, used_fallback = detect_with_fallback(embedder, decoded, settings)
     if not faces:
         raise NoFaceError(
             "No face was detected in the query photo. The face may be too "
-            "small, too dark, heavily occluded, or turned too far from the "
-            f"camera. Database search needs the active model ({embedder.info.backend}) "
-            "to find the face directly - it does not use the fallback backend, "
-            "because mixing embeddings from two different models would make "
-            "every similarity score in the results meaningless."
+            "small, too dark, heavily occluded, or turned too far from the camera."
+        )
+
+    if used_fallback:
+        # The whole search - query embedding and the index searched against -
+        # moves to the fallback backend's own self-consistent space. A photo
+        # only the fallback can detect a face in can only be compared against
+        # library photos indexed by that same backend.
+        profile = load_profile(
+            settings.calibration_dir, settings.calibration_profile, search_embedder.info.backend
+        )
+        logger.info(
+            "Primary backend (%s) detected no face in the query photo; "
+            "searching with fallback %s backend instead.",
+            embedder.info.backend,
+            search_embedder.info.backend,
         )
 
     if len(faces) > 1:
@@ -323,9 +349,9 @@ def run_database_search(
     else:
         face = faces[0]
 
-    query_embedding = embedder.embed(face.aligned)
+    query_embedding = search_embedder.embed(face.aligned)
 
-    index = get_index(settings, embedder, refresh=refresh_index)
+    index = get_index(settings, search_embedder, refresh=refresh_index)
 
     requested_top_n = top_n or settings.database_search_top_n
     requested_top_n = max(1, min(requested_top_n, settings.database_search_max_results))
@@ -333,17 +359,30 @@ def run_database_search(
     matrix = index.matrix()
     query_preview = visualize.render_face_thumbnail(decoded, face, size=160)
 
+    fallback_note = (
+        f"The primary model ({embedder.info.backend}) could not detect a face "
+        f"in the query photo. This search ran entirely on the fallback "
+        f"{search_embedder.info.backend} model instead - both the query and "
+        "the database were matched in that model's own space, which is less "
+        "accurate on large age gaps and post-surgical pairs."
+        if used_fallback
+        else None
+    )
+
     if matrix.shape[0] == 0:
+        empty_warnings = [
+            "No searchable photographs were found in the database folder "
+            f"({settings.database_search_dir}) for the {search_embedder.info.backend} model."
+        ]
+        if fallback_note:
+            empty_warnings.insert(0, fallback_note)
         return {
             "query_preview": query_preview,
             "indexed_photo_count": 0,
             "skipped_no_face": index.skipped_no_face,
             "skipped_error": index.skipped_error,
             "matches": [],
-            "warnings": [
-                "No searchable photographs were found in the database folder "
-                f"({settings.database_search_dir})."
-            ],
+            "warnings": empty_warnings,
         }
 
     query_norm = query_embedding / max(float(np.linalg.norm(query_embedding)), 1e-10)
@@ -397,6 +436,8 @@ def run_database_search(
             f"{index.skipped_no_face} photo(s) in the database folder had no "
             "detectable face and were excluded from the search."
         )
+    if fallback_note:
+        warnings.insert(0, fallback_note)
 
     return {
         "query_preview": query_preview,

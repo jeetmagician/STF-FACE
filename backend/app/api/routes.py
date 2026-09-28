@@ -192,9 +192,17 @@ async def database_search_status(
     """Whether one-to-many search is turned on, and the current index size.
 
     Cheap: reports the last-built index rather than building one, so the
-    interface can poll this before committing to a search.
+    interface can poll this before committing to a search. Never raises on a
+    missing model - an unloaded or disabled instance should still be able to
+    report its own status.
     """
-    return database_search.status(settings)
+    embedder = None
+    if settings.enable_database_search and is_loaded():
+        try:
+            embedder = embedder_dependency()
+        except Exception:
+            embedder = None
+    return database_search.status(settings, embedder)
 
 
 @router.post(
